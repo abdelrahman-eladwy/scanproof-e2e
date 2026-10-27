@@ -1,7 +1,8 @@
 # Contract test against the REAL gitlab.com API (public projects, anonymous, read-only).
 #
 # - Weekly / manual: runs `scanproof inspect --anonymous` on recent public pipelines and fails
-#   if ScanProof can no longer read GitLab's responses (API drift).
+#   if ScanProof can no longer read GitLab's responses (API drift), then checks that declared
+#   matrix `instances` match real `parallel: matrix:` job names (scanproof#60).
 # - On fixtures/gitlab/** branches: also commits sanitized API responses and security reports back to
 #   the branch, to refresh tests/fixtures/gitlab-real/ in abdelrahman-eladwy/scanproof.
 name: gitlab-contract
@@ -68,6 +69,8 @@ jobs:
               failed |= rc != 0
           sys.exit(1 if failed else 0)
           EOF
+      - name: Declared matrix legs match real parallel:matrix names (scanproof#60)
+        run: python scripts/gitlab_matrix_contract.py gitlab-contract
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

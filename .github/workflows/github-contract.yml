@@ -83,6 +83,28 @@ jobs:
           if [ "${{ matrix.lang }}" = "py" ]; then exit 1; fi
           echo ok
 
+  # #60: `js` was removed from this matrix (it was [py, js]). Only the `py` leg runs, and it
+  # passes, so nothing in the job names shows a leg is gone. A real Semgrep report lets the
+  # production-profile policies run with every check on.
+  removed-leg:
+    name: leg-sast (${{ matrix.lang }})
+    runs-on: ubuntu-latest
+    container: semgrep/semgrep:1.181.1
+    strategy:
+      matrix:
+        lang: [py]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: |
+          mkdir -p reports
+          semgrep scan --config p/default --metrics=off --json --output reports/semgrep.json targets/sample-app/
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: leg-report
+          path: reports/
+
   # 150 warning annotations first, so the masked failure lands on annotation page 2.
   noisy-masked:
     runs-on: ubuntu-latest
@@ -108,7 +130,7 @@ jobs:
           path: reports/semgrep.json
 
   self-verify:
-    needs: [semgrep-sast, exact-sast, masked-step, masked-job, skipped-scan, matrix-sast, noisy-masked, reusable-call, scope-free]
+    needs: [semgrep-sast, exact-sast, masked-step, masked-job, skipped-scan, matrix-sast, removed-leg, noisy-masked, reusable-call, scope-free]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     permissions:
@@ -149,4 +171,27 @@ jobs:
           # Opt-in reported_scope assurance against real and scope-free reports.
           check policies/github/scoped-ok.yaml 0
           check policies/github/scoped-missing.yaml 2
+          exit $failed
+      # Its own step: GitHub keeps only 10 annotations per step, and each result below is one.
+      - name: ScanProof detects a removed matrix leg (scanproof#60)
+        if: ${{ always() }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          failed=0
+          check() {  # check <policy> <expected exit> <expected non-passing 'check=CODE' pairs, sorted, comma-joined>
+            out="out-$(basename "$1" .yaml).json"
+            scanproof verify --provider github -P "$1" --pipeline "${{ github.run_id }}" \
+              -p "${{ github.repository }}" -o "$out"
+            rc=$?
+            got=$(python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); print(",".join(sorted(c["check"]+"="+c["code"] for q in r["requirements"] for c in q["checks"] if c["outcome"] not in ("PASS","NOT_APPLICABLE"))))' "$out")
+            echo "::notice title=#60 $(basename "$1")::exit $rc (expected $2); codes [$got] (expected [$3])"
+            [ "$rc" = "$2" ] && [ "$got" = "$3" ] || failed=1
+          }
+          # Declared legs fail; undeclared keeps the old outcome (compatible) or is UNKNOWN (production).
+          check policies/github/removed-leg-declared.yaml 1 "job_present [leg-sast (js)]=REQUIRED_INSTANCE_ABSENT"
+          check policies/github/removed-leg-undeclared.yaml 0 ""
+          check policies/github/removed-leg-production.yaml 2 "instances_declared=INSTANCES_UNDECLARED"
+          check policies/github/removed-leg-production-ok.yaml 0 ""
           exit $failed

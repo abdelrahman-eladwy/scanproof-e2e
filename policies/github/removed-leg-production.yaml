@@ -1,0 +1,13 @@
+# ScanProof verifying its own GitHub Actions run (github-contract.yml), issue #60.
+# Expected: INDETERMINATE (exit 2): production requires `instances` for matrix legs (INSTANCES_UNDECLARED)
+apiVersion: scanproof.dev/v1alpha1
+kind: PipelineAssurancePolicy
+metadata: {name: github-removed-leg-production}
+project: {provider: github, id: abdelrahman-eladwy/scanproof-e2e}
+assurance: {profile: production}
+requirements:
+  - id: SAST
+    tool: semgrep
+    job_name: leg-sast
+    artifact_name: leg-report
+    report_path: semgrep.json

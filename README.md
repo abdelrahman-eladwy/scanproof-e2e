@@ -14,11 +14,11 @@ manually to test any branch, tag or commit: **Actions > workflow > Run workflow*
 | Workflow | Runs | What it proves |
 |---|---|---|
 | [`demo`](.github/workflows/demo.yml) | daily, push to `main`, manual | Two green-looking release pipelines: one VERIFIED, one BLOCKED |
-| [`github-contract`](.github/workflows/github-contract.yml) | daily, manual, relevant pull requests | ScanProof verifies its own run: masked steps and jobs, skipped jobs, matrices (including exact-name collisions), reusable workflows, scope-free reports |
+| [`github-contract`](.github/workflows/github-contract.yml) | daily, manual, relevant pull requests | ScanProof verifies its own run: masked steps and jobs, skipped jobs, matrices (including exact-name collisions and a removed leg), reusable workflows, scope-free reports |
 | [`attestation-contract`](.github/workflows/attestation-contract.yml) | weekly, manual | Sigstore attestations from this run: correct signer, wrong signer, reusable-workflow pinning |
 | [`release-gate-contract`](.github/workflows/release-gate-contract.yml) | manual | A failed gate stops the downstream deploy job. **Expected red overall**; `assert-contract` must be green |
 | [`platforms-contract`](.github/workflows/platforms-contract.yml) | weekly, manual | Real Azure DevOps and Bitbucket APIs, and a throwaway Jenkins running one pipeline per masking pattern |
-| [`gitlab-contract`](.github/workflows/gitlab-contract.yml) | weekly, manual | `scanproof inspect` still reads real public gitlab.com pipelines (API drift) |
+| [`gitlab-contract`](.github/workflows/gitlab-contract.yml) | weekly, manual | `scanproof inspect` still reads real public gitlab.com pipelines (API drift); declared matrix `instances` match real `parallel: matrix:` names |
 | [`fixtures`](.github/workflows/fixtures.yml) | manual | Generates real reports from every supported scanner (no ScanProof involved) |
 
 `reusable-attest.yml` and `reusable-scan.yml` are called by the contract workflows; they are part
