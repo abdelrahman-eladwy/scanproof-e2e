@@ -5,9 +5,6 @@
 # - GitHub: two real callers of reusable-copy.yml in THIS run ('copy-api / copy-sast',
 #   'copy-web / copy-sast'); `verify-github` checks every scenario in
 #   policies/copies/github-scenarios.json against the run.
-# - GitLab: real child pipelines in a dedicated gitlab.com project (docs/gitlab-copies.md),
-#   read anonymously. Runs only once the repository variable GITLAB_COPIES_PROJECT is set;
-#   until then `gitlab-not-configured` says so on every run.
 #
 # Every scenario is judged by scripts/verify_contract.py (exit code, fresh report, provenance,
 # exact codes); its own offline tests run first.
@@ -26,8 +23,6 @@ on:
       - policies/copies/**
       - scripts/verify_contract.py
       - scripts/test_verify_contract.py
-      - scripts/gitlab_copies_contract.py
-      - scripts/test_gitlab_copies_contract.py
   schedule:
     - cron: "23 5 * * *"
 
@@ -91,10 +86,3 @@ jobs:
           name: copies-github-reports
           path: copies-github/
 
-  gitlab-not-configured:
-    if: ${{ vars.GITLAB_COPIES_PROJECT == '' }}
-    runs-on: ubuntu-latest
-    steps:
-      - run: >-
-          echo "::warning title=copies gitlab::GitLab copy contract not run: set the repository
-          variable GITLAB_COPIES_PROJECT (docs/gitlab-copies.md). scanproof#44 acceptance stays open."
