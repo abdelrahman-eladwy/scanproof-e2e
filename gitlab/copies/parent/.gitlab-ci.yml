@@ -1,0 +1,30 @@
+# ScanProof copy-completeness contract (abdelrahman-eladwy/scanproof#65), PUBLIC parent project.
+# Setup: docs/gitlab-copies.md in abdelrahman-eladwy/scanproof-e2e. Read anonymously by
+# .github/workflows/copies-contract.yml there.
+#
+# Branch `main`:         two child pipelines, each running the same job:
+#                        'svc-a > copy-sast', 'svc-b > copy-sast'.
+# Branch `inaccessible`: the same, plus 'svc-private', a trigger into a PRIVATE project, whose
+#                        jobs anonymous readers cannot see (403).
+stages: [copies]
+
+svc-a:
+  stage: copies
+  trigger:
+    include: ci/child.yml
+    strategy: depend
+
+svc-b:
+  stage: copies
+  trigger:
+    include: ci/child.yml
+    strategy: depend
+
+svc-private:
+  stage: copies
+  rules:
+    - if: $CI_COMMIT_BRANCH == "inaccessible"
+  trigger:
+    project: YOUR-NAMESPACE/scanproof-copies-private   # <- edit: path of the private project
+    branch: main
+    strategy: depend

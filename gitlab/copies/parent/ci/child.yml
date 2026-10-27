@@ -1,0 +1,10 @@
+# Child pipeline started by the svc-a and svc-b triggers. ScanProof names its job
+# '<trigger> > copy-sast'.
+copy-sast:
+  image: semgrep/semgrep:1.181.1
+  script:
+    - semgrep scan --config p/default --metrics=off --json --output semgrep.json app/
+  artifacts:
+    access: all          # anonymous readers may download the report
+    paths: [semgrep.json]
+    expire_in: 30 days

@@ -1,0 +1,57 @@
+[
+  {
+    "policy": "policies/copies/gitlab/declared.yaml",
+    "policy_name": "gitlab-copies-declared",
+    "exit": 0,
+    "codes": [],
+    "jobs": [
+      "svc-a > copy-sast",
+      "svc-b > copy-sast"
+    ]
+  },
+  {
+    "policy": "policies/copies/gitlab/removed.yaml",
+    "policy_name": "gitlab-copies-removed",
+    "exit": 1,
+    "codes": [
+      "job_present [svc-c > copy-sast]=REQUIRED_COPY_ABSENT"
+    ],
+    "jobs": [
+      "svc-a > copy-sast",
+      "svc-b > copy-sast"
+    ]
+  },
+  {
+    "policy": "policies/copies/gitlab/production-undeclared.yaml",
+    "policy_name": "gitlab-copies-production-undeclared",
+    "exit": 2,
+    "codes": [
+      "copies_declared=COPIES_UNDECLARED"
+    ],
+    "jobs": [
+      "svc-a > copy-sast",
+      "svc-b > copy-sast"
+    ]
+  },
+  {
+    "policy": "policies/copies/gitlab/production-declared.yaml",
+    "policy_name": "gitlab-copies-production-declared",
+    "exit": 0,
+    "codes": [],
+    "jobs": [
+      "svc-a > copy-sast",
+      "svc-b > copy-sast"
+    ]
+  },
+  {
+    "policy": "policies/copies/gitlab/compatible-undeclared.yaml",
+    "policy_name": "gitlab-copies-compatible-undeclared",
+    "exit": 0,
+    "codes": [],
+    "jobs": [
+      "svc-a > copy-sast",
+      "svc-b > copy-sast"
+    ],
+    "warning": "declares no `copies`"
+  }
+]
