@@ -1,0 +1,11 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directories: ["/", "/.github/actions/*"]
+    schedule: {interval: weekly}
+    groups:
+      actions: {patterns: ["*"]}
+  - package-ecosystem: docker
+    directory: /jenkins
+    schedule: {interval: weekly}
+# targets/ is deliberately vulnerable scanner input: never let Dependabot "fix" it.

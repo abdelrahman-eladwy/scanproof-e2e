@@ -1,0 +1,13 @@
+# reported_scope on a syntactically valid but scope-free report. Expected: INDETERMINATE (exit 2).
+apiVersion: scanproof.dev/v1alpha1
+kind: PipelineAssurancePolicy
+metadata: {name: github-scoped-missing}
+project: {provider: github, id: abdelrahman-eladwy/scanproof-e2e}
+assurance: {minimum_level: reported_scope}
+requirements:
+  - id: SAST
+    tool: semgrep
+    job_name: scope-free
+    artifact_name: scope-free-report
+    report_path: semgrep.json
+enforcement: {on_unknown: block, on_nothing_applicable: block}

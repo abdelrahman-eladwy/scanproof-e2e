@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+.venv/
+out/
+# Raw output of the fixture-collection workflows. They commit it (git add -f) only to
+# fixtures/** branches; reviewed copies go to tests/fixtures/ in abdelrahman-eladwy/scanproof.
+generated-fixtures/
+generated-gitlab-contract/
+gitlab-contract/

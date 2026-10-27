@@ -1,0 +1,49 @@
+name: Install ScanProof
+description: >
+  Install ScanProof from the code repository (abdelrahman-eladwy/scanproof) at a branch, tag or
+  commit, and record the exact commit tested in the job summary.
+
+inputs:
+  ref:
+    description: Branch, tag or commit SHA of abdelrahman-eladwy/scanproof to test.
+    default: main
+  extras:
+    description: Optional extras, e.g. "attestations".
+    default: ""
+
+outputs:
+  commit:
+    description: The ScanProof commit that was installed.
+    value: ${{ steps.install.outputs.commit }}
+
+runs:
+  using: composite
+  steps:
+    - id: install
+      shell: bash
+      env:
+        # Passed through env, never interpolated into the script (no injection via the ref input).
+        SCANPROOF_REF: ${{ inputs.ref }}
+        SCANPROOF_EXTRAS: ${{ inputs.extras }}
+        REPO_URL: https://github.com/abdelrahman-eladwy/scanproof
+      run: |
+        set -euo pipefail
+        case "$SCANPROOF_REF" in
+          ""|-*|*[!A-Za-z0-9._/-]*) echo "::error title=install-scanproof::invalid ref '$SCANPROOF_REF'"; exit 1 ;;
+        esac
+        case "$SCANPROOF_EXTRAS" in
+          *[!a-z,]*) echo "::error title=install-scanproof::invalid extras '$SCANPROOF_EXTRAS'"; exit 1 ;;
+        esac
+        src="$RUNNER_TEMP/scanproof-src"
+        rm -rf "$src"
+        git init -q "$src"
+        git -C "$src" fetch -q --depth 1 "$REPO_URL" "$SCANPROOF_REF"
+        git -C "$src" checkout -q FETCH_HEAD
+        commit=$(git -C "$src" rev-parse HEAD)
+        spec="$src"
+        if [ -n "$SCANPROOF_EXTRAS" ]; then spec="${src}[${SCANPROOF_EXTRAS}]"; fi
+        python -m pip install -q "$spec"
+        version=$(scanproof --version)
+        echo "commit=$commit" >> "$GITHUB_OUTPUT"
+        echo "::notice title=ScanProof under test::$version @ $SCANPROOF_REF ($commit)"
+        echo "ScanProof under test: \`$version\` from [\`$SCANPROOF_REF\` @ ${commit:0:12}]($REPO_URL/commit/$commit)" >> "$GITHUB_STEP_SUMMARY"
