@@ -11,6 +11,10 @@ on:
       scanproof_ref:
         description: ScanProof branch, tag or commit to test
         default: main
+  pull_request:
+    paths:
+      - .github/workflows/github-contract.yml
+      - policies/github/**
   schedule:
     - cron: "41 4 * * *"
   push:
@@ -58,17 +62,18 @@ jobs:
     steps:
       - run: echo never
 
-  # Matrix: one instance hides a failing scan step behind continue-on-error.
+  # The passing exact `sast` job above must not hide this failing `sast (py)` matrix leg.
   matrix-sast:
+    name: sast (${{ matrix.lang }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        lang: [python, go]
+        lang: [py, go]
     steps:
       - name: scan
-        continue-on-error: ${{ matrix.lang == 'go' }}
+        continue-on-error: ${{ matrix.lang == 'py' }}
         run: |
-          if [ "${{ matrix.lang }}" = "go" ]; then exit 1; fi
+          if [ "${{ matrix.lang }}" = "py" ]; then exit 1; fi
           echo ok
 
   # 150 warning annotations first, so the masked failure lands on annotation page 2.
