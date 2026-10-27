@@ -9,6 +9,8 @@ Run: python -m unittest scripts/test_gitlab_matrix_contract.py
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import subprocess
 import sys
@@ -54,7 +56,12 @@ class Contract(unittest.TestCase):
                 out.write_text(json.dumps(report), encoding="utf-8")
             return subprocess.CompletedProcess(cmd, rc)
 
-        with mock.patch.object(contract.subprocess, "run", fake_run):
+        # Capture stdout: the expected failures print '::error' workflow commands, which on a
+        # runner become red annotations on a passing job and train readers to ignore them.
+        with (
+            mock.patch.object(contract.subprocess, "run", fake_run),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
             return contract.main(str(self.root))
 
     GOOD_REMOVED = (1, absent_report([REMOVED_CHECK]))
