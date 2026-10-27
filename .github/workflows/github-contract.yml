@@ -83,6 +83,28 @@ jobs:
           if [ "${{ matrix.lang }}" = "py" ]; then exit 1; fi
           echo ok
 
+  # #60: `js` was removed from this matrix (it was [py, js]). Only the `py` leg runs, and it
+  # passes, so nothing in the job names shows a leg is gone. A real Semgrep report lets the
+  # production-profile policies run with every check on.
+  removed-leg:
+    name: leg-sast (${{ matrix.lang }})
+    runs-on: ubuntu-latest
+    container: semgrep/semgrep:1.181.1
+    strategy:
+      matrix:
+        lang: [py]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: |
+          mkdir -p reports
+          semgrep scan --config p/default --metrics=off --json --output reports/semgrep.json targets/sample-app/
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: leg-report
+          path: reports/
+
   # 150 warning annotations first, so the masked failure lands on annotation page 2.
   noisy-masked:
     runs-on: ubuntu-latest
@@ -108,7 +130,7 @@ jobs:
           path: reports/semgrep.json
 
   self-verify:
-    needs: [semgrep-sast, exact-sast, masked-step, masked-job, skipped-scan, matrix-sast, noisy-masked, reusable-call, scope-free]
+    needs: [semgrep-sast, exact-sast, masked-step, masked-job, skipped-scan, matrix-sast, removed-leg, noisy-masked, reusable-call, scope-free]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     permissions:
@@ -137,6 +159,11 @@ jobs:
             echo "::notice title=self-verify $(basename "$1")::exit $rc (expected $2)"
             [ "$rc" = "$2" ] || failed=1
           }
+          codes() {  # codes <policy> <expected non-passing 'check=CODE' pairs, sorted, comma-joined>
+            got=$(python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); print(",".join(sorted(c["check"]+"="+c["code"] for q in r["requirements"] for c in q["checks"] if c["outcome"] not in ("PASS","NOT_APPLICABLE"))))' "out-$(basename "$1" .yaml).json")
+            echo "::notice title=codes $(basename "$1")::$got"
+            [ "$got" = "$2" ] || { echo "::error title=codes $(basename "$1")::expected $2"; failed=1; }
+          }
           failed=0
           check policies/github/sast.yaml 0
           check policies/github/masked-step.yaml 1
@@ -145,6 +172,15 @@ jobs:
           check policies/github/matrix.yaml 1
           check policies/github/noisy.yaml 1
           check policies/github/reusable.yaml 0
+
+          # #60: a removed matrix leg. Declared legs fail; undeclared keeps the old outcome
+          # (compatible) or is UNKNOWN (production).
+          check policies/github/removed-leg-declared.yaml 1
+          codes policies/github/removed-leg-declared.yaml "job_present [leg-sast (js)]=REQUIRED_INSTANCE_ABSENT"
+          check policies/github/removed-leg-undeclared.yaml 0
+          check policies/github/removed-leg-production.yaml 2
+          codes policies/github/removed-leg-production.yaml "instances_declared=INSTANCES_UNDECLARED"
+          check policies/github/removed-leg-production-ok.yaml 0
 
           # Opt-in reported_scope assurance against real and scope-free reports.
           check policies/github/scoped-ok.yaml 0
