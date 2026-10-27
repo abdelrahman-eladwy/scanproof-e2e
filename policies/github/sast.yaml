@@ -16,7 +16,7 @@ requirements:
       required_paths: ["targets/sample-app/"]
   - id: SAST-SARIF
     tool: sarif
-    job_name: sast
+    job_name: semgrep-sast
     artifact_name: semgrep-report
     report_path: semgrep.sarif
     checks:
