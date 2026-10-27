@@ -1,0 +1,17 @@
+# ScanProof verifying its own copies-contract.yml run (scanproof#65).
+# VERIFIED with a warning: compatible keeps the old decision.
+# Expected exit: 0
+
+# GitHub artifacts belong to the run, not the job: both copies read copy-report-api. This
+# contract is about the copy set; per-copy reports need one requirement per artifact.
+
+apiVersion: scanproof.dev/v1alpha1
+kind: PipelineAssurancePolicy
+metadata: {name: github-copies-compatible-undeclared}
+project: {provider: github, id: abdelrahman-eladwy/scanproof-e2e}
+requirements:
+  - id: SAST
+    tool: semgrep
+    job_name: copy-sast
+    artifact_name: copy-report-api
+    report_path: semgrep.json

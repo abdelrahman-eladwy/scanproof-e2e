@@ -1,0 +1,27 @@
+# ScanProof verifying its own copies-contract.yml run (scanproof#65).
+# Load error: production rejects waiving the absent copy's job_present.
+# Expected exit: 3
+
+# GitHub artifacts belong to the run, not the job: both copies read copy-report-api. This
+# contract is about the copy set; per-copy reports need one requirement per artifact.
+
+apiVersion: scanproof.dev/v1alpha1
+kind: PipelineAssurancePolicy
+metadata: {name: github-copies-production-waiver-absent}
+project: {provider: github, id: abdelrahman-eladwy/scanproof-e2e}
+assurance: {profile: production}
+enforcement: {max_waiver_days: 30}
+requirements:
+  - id: SAST
+    tool: semgrep
+    job_name: copy-sast
+    artifact_name: copy-report-api
+    report_path: semgrep.json
+    copies: [copy-api, copy-web, copy-mobile]
+waivers:
+  - requirement: SAST
+    check: "job_present [copy-mobile / copy-sast]"
+    reason: "accepting unchecked copies (contract)"
+    approved_by: e2e
+    created: 2026-10-01
+    expires: 2026-10-30

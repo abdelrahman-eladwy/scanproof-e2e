@@ -1,0 +1,71 @@
+[
+  {
+    "policy": "policies/copies/github/declared.yaml",
+    "policy_name": "github-copies-declared",
+    "exit": 0,
+    "codes": [],
+    "jobs": [
+      "copy-api / copy-sast",
+      "copy-web / copy-sast"
+    ]
+  },
+  {
+    "policy": "policies/copies/github/removed.yaml",
+    "policy_name": "github-copies-removed",
+    "exit": 1,
+    "codes": [
+      "job_present [copy-mobile / copy-sast]=REQUIRED_COPY_ABSENT"
+    ],
+    "jobs": [
+      "copy-api / copy-sast",
+      "copy-web / copy-sast"
+    ]
+  },
+  {
+    "policy": "policies/copies/github/production-undeclared.yaml",
+    "policy_name": "github-copies-production-undeclared",
+    "exit": 2,
+    "codes": [
+      "copies_declared=COPIES_UNDECLARED"
+    ],
+    "jobs": [
+      "copy-api / copy-sast",
+      "copy-web / copy-sast"
+    ]
+  },
+  {
+    "policy": "policies/copies/github/production-declared.yaml",
+    "policy_name": "github-copies-production-declared",
+    "exit": 0,
+    "codes": [],
+    "jobs": [
+      "copy-api / copy-sast",
+      "copy-web / copy-sast"
+    ]
+  },
+  {
+    "policy": "policies/copies/github/compatible-undeclared.yaml",
+    "policy_name": "github-copies-compatible-undeclared",
+    "exit": 0,
+    "codes": [],
+    "jobs": [
+      "copy-api / copy-sast",
+      "copy-web / copy-sast"
+    ],
+    "warning": "declares no `copies`"
+  },
+  {
+    "policy": "policies/copies/github/production-waiver-undeclared.yaml",
+    "exit": 3,
+    "load_errors": [
+      "WAIVER_HIDES_UNDECLARED_COPIES"
+    ]
+  },
+  {
+    "policy": "policies/copies/github/production-waiver-absent.yaml",
+    "exit": 3,
+    "load_errors": [
+      "WAIVER_REMOVES_REQUIREMENT"
+    ]
+  }
+]
