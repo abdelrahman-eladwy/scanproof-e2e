@@ -7,11 +7,13 @@ This repository has no GitLab project of its own, so it cannot remove a leg from
 matrix. It does the equivalent from the policy side, on real names:
 
 1. Pick the matrix with the most legs ('name: [label]') in each inspected pipeline.
-2. `exact`:   declare exactly the labels that ran. No REQUIRED_INSTANCE_ABSENT may appear:
-              every real label (multi-variable 'a, b', values with spaces, unexpanded
-              '${VAR}') must be parsed and matched.
+2. `exact`:   declare exactly the labels that ran. Expected: exit 0 and no
+              REQUIRED_INSTANCE_ABSENT: every real label (multi-variable 'a, b', values with
+              spaces, unexpanded '${VAR}') must be parsed and matched.
 3. `removed`: declare one more label that no job carries, i.e. a leg the pipeline no longer
               runs. Expected: exit 1, with exactly that leg as REQUIRED_INSTANCE_ABSENT.
+
+A run that writes no report never passes either case (scanproof-e2e#4).
 
 Only job results are judged (no report is read), so anonymous access is enough.
 Usage: python scripts/gitlab_matrix_contract.py <out dir>
@@ -45,7 +47,10 @@ def largest_matrix(inspection: dict) -> tuple[str, list[str]] | None:
     return base, sorted(set(legs[base]))
 
 
-def verify(out: Path, project: str, pipeline: int, base: str, labels: list[str], tag: str):
+def verify(
+    out: Path, project: str, pipeline: int, base: str, labels: list[str], tag: str
+) -> tuple[int, list[str] | None]:
+    """(exit code, sorted REQUIRED_INSTANCE_ABSENT checks); None when no report was written."""
     policy = {
         "apiVersion": "scanproof.dev/v1alpha1",
         "kind": "PipelineAssurancePolicy",
@@ -68,8 +73,11 @@ def verify(out: Path, project: str, pipeline: int, base: str, labels: list[str],
     result_path = out / f"matrix-{tag}.json"
     cmd = ["scanproof", "verify", "--anonymous", "-P", str(policy_path),
            "--pipeline", str(pipeline), "-o", str(result_path)]  # fmt: skip
+    result_path.unlink(missing_ok=True)  # never judge a report left by an earlier run
     rc = subprocess.run(cmd, check=False).returncode
-    report = json.loads(result_path.read_text(encoding="utf-8")) if result_path.exists() else {}
+    if not result_path.exists():
+        return rc, None
+    report = json.loads(result_path.read_text(encoding="utf-8"))
     absent = sorted(
         c["check"]
         for r in report.get("requirements", [])
@@ -98,10 +106,10 @@ def main(out_dir: str) -> int:
         print(f"::notice title=matrix {slug}::{base}: {len(labels)} legs {labels}")
 
         rc, absent = verify(out, entry["project"], entry["pipeline_id"], base, labels, "exact")
-        ok = absent == []
+        ok = rc == 0 and absent == []
         print(f"::notice title=matrix {slug} exact::exit {rc}, absent {absent}")
         if not ok:
-            print(f"::error title=matrix {slug} exact::real legs not matched: {absent}")
+            print(f"::error title=matrix {slug} exact::expected exit 0 and no absent leg")
 
         rc2, absent2 = verify(
             out, entry["project"], entry["pipeline_id"], base, [*labels, REMOVED], "removed"

@@ -1,6 +1,6 @@
 # Contract test against the REAL gitlab.com API (public projects, anonymous, read-only).
 #
-# - Weekly / manual: runs `scanproof inspect --anonymous` on recent public pipelines and fails
+# - Weekly / manual / PRs touching the matrix contract: runs `scanproof inspect --anonymous` on recent public pipelines and fails
 #   if ScanProof can no longer read GitLab's responses (API drift), then checks that declared
 #   matrix `instances` match real `parallel: matrix:` job names (scanproof#60).
 # - On fixtures/gitlab/** branches: also commits sanitized API responses and security reports back to
@@ -13,6 +13,11 @@ on:
       scanproof_ref:
         description: ScanProof branch, tag or commit to test
         default: main
+  pull_request:
+    paths:
+      - .github/workflows/gitlab-contract.yml
+      - scripts/gitlab_matrix_contract.py
+      - scripts/test_gitlab_matrix_contract.py
   schedule:
     - cron: "17 6 * * 1"
   push:
@@ -38,6 +43,8 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
+      - name: Self-test the matrix contract's assertions (offline, scanproof-e2e#4)
+        run: python -m unittest scripts/test_gitlab_matrix_contract.py
       - uses: ./.github/actions/install-scanproof
         with:
           ref: ${{ inputs.scanproof_ref || 'main' }}
