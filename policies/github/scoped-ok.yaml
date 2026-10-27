@@ -7,7 +7,7 @@ assurance: {minimum_level: reported_scope}
 requirements:
   - id: SAST
     tool: semgrep
-    job_name: sast
+    job_name: semgrep-sast
     artifact_name: semgrep-report
     report_path: semgrep.json
     checks: {scanner_errors_allowed: 0}

@@ -7,7 +7,7 @@ project: {provider: github, id: abdelrahman-eladwy/scanproof-e2e}
 requirements:
   - id: SAST-NATIVE
     tool: semgrep
-    job_name: sast
+    job_name: semgrep-sast
     artifact_name: semgrep-report
     report_path: semgrep.json
     checks:

@@ -24,7 +24,8 @@ permissions:
   contents: read
 
 jobs:
-  sast:
+  semgrep-sast:
+    name: semgrep-sast
     runs-on: ubuntu-latest
     container: semgrep/semgrep:1.181.1
     steps:
@@ -62,7 +63,13 @@ jobs:
     steps:
       - run: echo never
 
-  # The passing exact `sast` job above must not hide this failing `sast (py)` matrix leg.
+  # A passing exact `sast` job must not hide this failing `sast (py)` matrix leg.
+  exact-sast:
+    name: sast
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "the exact-name job passes"
+
   matrix-sast:
     name: sast (${{ matrix.lang }})
     runs-on: ubuntu-latest
@@ -101,7 +108,7 @@ jobs:
           path: reports/semgrep.json
 
   self-verify:
-    needs: [sast, masked-step, masked-job, skipped-scan, matrix-sast, noisy-masked, reusable-call, scope-free]
+    needs: [semgrep-sast, exact-sast, masked-step, masked-job, skipped-scan, matrix-sast, noisy-masked, reusable-call, scope-free]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     permissions:
