@@ -1,0 +1,12 @@
+# ScanProof copy-completeness contract (abdelrahman-eladwy/scanproof#65), PRIVATE project.
+# Only runs when the public parent's `svc-private` trigger starts it. Anonymous readers get
+# 403 on its jobs, so ScanProof must report a missing copy here as unknown, not absent.
+copy-sast:
+  image: semgrep/semgrep:1.181.1
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "pipeline"
+  script:
+    - semgrep scan --config p/default --metrics=off --json --output semgrep.json app/
+  artifacts:
+    paths: [semgrep.json]
+    expire_in: 30 days

@@ -1,0 +1,16 @@
+# ScanProof verifying the public GitLab copies project (scanproof#65), docs/gitlab-copies.md.
+# Pipeline: latest successful on branch `main`. VERIFIED: production with the declared copies.
+# Expected exit: 0
+# project.id is a placeholder: the contract passes the real path with -p.
+
+apiVersion: scanproof.dev/v1alpha1
+kind: PipelineAssurancePolicy
+metadata: {name: gitlab-copies-production-declared}
+project: {provider: gitlab, id: set-by-contract}
+assurance: {profile: production}
+requirements:
+  - id: SAST
+    tool: semgrep
+    job_name: copy-sast
+    report_path: semgrep.json
+    copies: [svc-a, svc-b]

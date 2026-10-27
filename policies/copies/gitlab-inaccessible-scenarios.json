@@ -1,0 +1,41 @@
+[
+  {
+    "policy": "policies/copies/gitlab/inaccessible-declared.yaml",
+    "policy_name": "gitlab-copies-inaccessible-declared",
+    "exit": 2,
+    "codes": [
+      "job_present [svc-private > copy-sast]=JOB_MAYBE_IN_UNREADABLE_PIPELINE"
+    ],
+    "jobs": [
+      "svc-a > copy-sast",
+      "svc-b > copy-sast"
+    ],
+    "unreadable_ok": true,
+    "warning": "could not be read"
+  },
+  {
+    "policy": "policies/copies/gitlab/inaccessible-not-required.yaml",
+    "policy_name": "gitlab-copies-inaccessible-not-required",
+    "exit": 0,
+    "codes": [],
+    "jobs": [
+      "svc-a > copy-sast",
+      "svc-b > copy-sast"
+    ],
+    "unreadable_ok": true,
+    "warning": "could not be read"
+  },
+  {
+    "policy": "policies/copies/gitlab/inaccessible-production.yaml",
+    "policy_name": "gitlab-copies-inaccessible-production",
+    "exit": 2,
+    "codes": [
+      "copies_declared=COPIES_UNDECLARED"
+    ],
+    "jobs": [
+      "svc-a > copy-sast",
+      "svc-b > copy-sast"
+    ],
+    "unreadable_ok": true
+  }
+]
