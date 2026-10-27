@@ -19,9 +19,10 @@ manually to test any branch, tag or commit: **Actions > workflow > Run workflow*
 | [`release-gate-contract`](.github/workflows/release-gate-contract.yml) | manual | A failed gate stops the downstream deploy job. **Expected red overall**; `assert-contract` must be green |
 | [`platforms-contract`](.github/workflows/platforms-contract.yml) | weekly, manual | Real Azure DevOps and Bitbucket APIs, and a throwaway Jenkins running one pipeline per masking pattern |
 | [`gitlab-contract`](.github/workflows/gitlab-contract.yml) | weekly, manual | `scanproof inspect` still reads real public gitlab.com pipelines (API drift); declared matrix `instances` match real `parallel: matrix:` names |
+| [`copies-contract`](.github/workflows/copies-contract.yml) | daily, manual, relevant pull requests | Copy completeness (scanproof#65): real reusable-workflow callers, a removed caller, production and waiver rejections; GitLab child pipelines once configured ([setup](docs/gitlab-copies.md)) |
 | [`fixtures`](.github/workflows/fixtures.yml) | manual | Generates real reports from every supported scanner (no ScanProof involved) |
 
-`reusable-attest.yml` and `reusable-scan.yml` are called by the contract workflows; they are part
+`reusable-attest.yml`, `reusable-scan.yml` and `reusable-copy.yml` are called by the contract workflows; they are part
 of what is being tested, not standalone jobs.
 
 ## Layout

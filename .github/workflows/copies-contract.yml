@@ -1,0 +1,100 @@
+# Live contract for ScanProof copy completeness (scanproof#65): copies of a job told apart only
+# by a prefix must all be present, and a missing one must be BLOCKED, or INDETERMINATE when it
+# may sit in a pipeline that can't be read.
+#
+# - GitHub: two real callers of reusable-copy.yml in THIS run ('copy-api / copy-sast',
+#   'copy-web / copy-sast'); `verify-github` checks every scenario in
+#   policies/copies/github-scenarios.json against the run.
+# - GitLab: real child pipelines in a dedicated gitlab.com project (docs/gitlab-copies.md),
+#   read anonymously. Runs only once the repository variable GITLAB_COPIES_PROJECT is set;
+#   until then `gitlab-not-configured` says so on every run.
+#
+# Every scenario is judged by scripts/verify_contract.py (exit code, fresh report, provenance,
+# exact codes); its own offline tests run first.
+name: copies-contract
+
+on:
+  workflow_dispatch:
+    inputs:
+      scanproof_ref:
+        description: ScanProof branch, tag or commit to test
+        default: main
+  pull_request:
+    paths:
+      - .github/workflows/copies-contract.yml
+      - .github/workflows/reusable-copy.yml
+      - policies/copies/**
+      - scripts/verify_contract.py
+      - scripts/test_verify_contract.py
+      - scripts/gitlab_copies_contract.py
+      - scripts/test_gitlab_copies_contract.py
+  schedule:
+    - cron: "23 5 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  self-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Offline tests of the contract harness
+        run: python -m unittest discover -s scripts -p "test_*.py" -v
+
+  copy-api:
+    uses: ./.github/workflows/reusable-copy.yml
+    with:
+      copy: api
+
+  copy-web:
+    uses: ./.github/workflows/reusable-copy.yml
+    with:
+      copy: web
+
+  verify-github:
+    needs: [self-test, copy-api, copy-web]
+    if: ${{ always() && needs.self-test.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      checks: read     # annotations reveal steps hidden by continue-on-error
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - uses: ./.github/actions/install-scanproof
+        with:
+          ref: ${{ inputs.scanproof_ref || 'main' }}
+      - name: Copy scenarios against this run
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          # The run's head commit: the PR head on pull_request, else the pushed/scheduled commit.
+          RUN_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: >-
+          python scripts/verify_contract.py policies/copies/github-scenarios.json
+          --provider github --project "${{ github.repository }}"
+          --pipeline "${{ github.run_id }}" --sha "$RUN_SHA"
+          --out-dir copies-github --title "copies github"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: copies-github-reports
+          path: copies-github/
+
+  gitlab-not-configured:
+    if: ${{ vars.GITLAB_COPIES_PROJECT == '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: >-
+          echo "::warning title=copies gitlab::GitLab copy contract not run: set the repository
+          variable GITLAB_COPIES_PROJECT (docs/gitlab-copies.md). scanproof#44 acceptance stays open."

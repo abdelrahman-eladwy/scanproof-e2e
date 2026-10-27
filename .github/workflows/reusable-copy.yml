@@ -1,0 +1,30 @@
+# Reusable scan used by copies-contract.yml (scanproof#65). Each caller makes one copy of the
+# same job, named "<caller> / copy-sast", which ScanProof must tell apart only by the prefix.
+name: reusable-copy
+
+on:
+  workflow_call:
+    inputs:
+      copy:
+        description: Copy name, used for the report artifact
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  copy-sast:
+    runs-on: ubuntu-latest
+    container: semgrep/semgrep:1.181.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: |
+          mkdir -p reports
+          semgrep scan --config p/default --metrics=off --json --output reports/semgrep.json targets/sample-app/
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: copy-report-${{ inputs.copy }}
+          path: reports/
