@@ -18,8 +18,10 @@ import sys
 import time
 import urllib.error
 import urllib.parse
-import urllib.request
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+import gitlab_http  # noqa: E402
 
 GITLAB = "https://gitlab.com"
 API = f"{GITLAB}/api/v4"
@@ -77,10 +79,9 @@ PIPELINE_KEYS = {
 def get(url: str, *, raw: bool = False, limit: int | None = None):
     if not url.startswith("https://gitlab.com/"):
         raise ValueError(f"refusing non-gitlab.com URL: {url}")
-    req = urllib.request.Request(url, headers=UA)  # noqa: S310 - scheme/host checked above
     for attempt in range(4):
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 - fixed https host
+            with gitlab_http.urlopen(url, UA) as resp:  # token, https-only redirects
                 body = resp.read(limit + 1 if limit else -1)
                 if limit and len(body) > limit:
                     raise ValueError("too large")

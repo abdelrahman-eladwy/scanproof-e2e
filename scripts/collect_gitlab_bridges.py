@@ -11,8 +11,10 @@ import json
 import sys
 import urllib.error
 import urllib.parse
-import urllib.request
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+import gitlab_http  # noqa: E402
 
 API = "https://gitlab.com/api/v4"
 UA = {
@@ -50,9 +52,8 @@ def get(path: str):
     url = path if path.startswith("https://") else f"{API}{path}"
     if not url.startswith("https://gitlab.com/"):
         raise ValueError(url)
-    req = urllib.request.Request(url, headers=UA)  # noqa: S310 - fixed https host
     try:
-        with urllib.request.urlopen(req, timeout=30) as r:  # noqa: S310
+        with gitlab_http.urlopen(url, UA) as r:  # token, https-only redirects
             return json.loads(r.read())
     except urllib.error.HTTPError as e:
         return {"_error": e.code}
