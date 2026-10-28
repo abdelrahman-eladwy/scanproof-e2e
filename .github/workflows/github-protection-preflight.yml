@@ -10,10 +10,9 @@ on:
       - "scripts/test_audit_github_gate.py"
       - "scripts/audit_github_environment.py"
       - "scripts/test_audit_github_environment.py"
-      - "scripts/audit_github_environment.py"
-      - "scripts/test_audit_github_environment.py"
       - "scripts/audit_github_gate_trials.py"
       - "scripts/test_audit_github_gate_trials.py"
+      - "scripts/test_github_protection_workflow.py"
       - ".github/workflows/github-gate-trials.yml"
       - ".github/workflows/github-protection-preflight.yml"
   push:
@@ -21,8 +20,11 @@ on:
     paths:
       - "scripts/audit_github_gate.py"
       - "scripts/test_audit_github_gate.py"
+      - "scripts/audit_github_environment.py"
+      - "scripts/test_audit_github_environment.py"
       - "scripts/audit_github_gate_trials.py"
       - "scripts/test_audit_github_gate_trials.py"
+      - "scripts/test_github_protection_workflow.py"
       - ".github/workflows/github-gate-trials.yml"
       - ".github/workflows/github-protection-preflight.yml"
   workflow_dispatch:
@@ -71,6 +73,7 @@ jobs:
           scripts/test_audit_github_gate.py
           scripts/test_audit_github_environment.py
           scripts/test_audit_github_gate_trials.py
+          scripts/test_github_protection_workflow.py
 
   audit:
     if: ${{ github.event_name == 'workflow_dispatch' }}
