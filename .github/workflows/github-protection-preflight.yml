@@ -1,0 +1,81 @@
+# Read-only proof-of-configuration. This is NOT a deployment or bypass test.
+# Manual audit failures are expected until independent staging protections exist.
+# Never make the intentionally failing audit job a required merge status.
+name: github-protection-preflight
+
+on:
+  pull_request:
+    paths:
+      - "scripts/audit_github_gate.py"
+      - "scripts/test_audit_github_gate.py"
+      - ".github/workflows/github-protection-preflight.yml"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/audit_github_gate.py"
+      - "scripts/test_audit_github_gate.py"
+      - ".github/workflows/github-protection-preflight.yml"
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: "Sacrificial GitHub owner/repo to audit (public to this workflow token)"
+        required: true
+        type: string
+      branch:
+        description: "Deployment branch to protect"
+        default: "main"
+        required: true
+        type: string
+      status_check:
+        description: "Exact independently required ScanProof status context"
+        default: "ScanProof verification"
+        required: true
+        type: string
+      trusted_app_id:
+        description: "Trusted check source integration ID (GitHub Actions = 15368)"
+        default: "15368"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  self-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Offline ruleset and token-safety regressions
+        run: python -m unittest -q scripts/test_audit_github_gate.py
+
+  audit:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    needs: [self-test]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      AUDIT_REPO: ${{ inputs.repository }}
+      AUDIT_BRANCH: ${{ inputs.branch }}
+      AUDIT_CONTEXT: ${{ inputs.status_check }}
+      AUDIT_APP_ID: ${{ inputs.trusted_app_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Assert protected ScanProof check and independent review settings
+        run: >-
+          python scripts/audit_github_gate.py
+          --repo "$AUDIT_REPO" --branch "$AUDIT_BRANCH"
+          --check "$AUDIT_CONTEXT" --app-id "$AUDIT_APP_ID"
+          --output audit/result.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: github-protection-preflight-evidence
+          path: audit/result.json
+          if-no-files-found: warn
