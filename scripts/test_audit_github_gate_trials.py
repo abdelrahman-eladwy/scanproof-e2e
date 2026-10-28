@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import sys
@@ -106,6 +107,17 @@ class TrialContract(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Ambiguous"):
             observe("positive", checks=make_checks("success", duplicates=True))
 
+    def test_gate_check_must_match_head_and_be_completed(self):
+        for mutation in (
+            {"head_sha": "b" * 40},
+            {"status": "in_progress"},
+        ):
+            with self.subTest(mutation=mutation):
+                checks = make_checks("success")
+                checks["check_runs"][0].update(mutation)
+                with self.assertRaises(ValueError):
+                    observe("positive", checks=checks)
+
     def test_paginated_inventory_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "pagination"):
             observe("missing", checks=make_checks(total=101))
@@ -173,10 +185,7 @@ class TrialContract(unittest.TestCase):
                 req, None, 302, "Found", {}, "https://attacker.invalid/steal"
             )
         with mock.patch.object(
-            audit.OPENER, "open", return_value=unittest.mock.MagicMock(
-                __enter__=lambda _: __import__("io").BytesIO(b"x" * (audit.MAX_BYTES + 1)),
-                __exit__=lambda *_: None,
-            )
+            audit.OPENER, "open", return_value=io.BytesIO(b"x" * (audit.MAX_BYTES + 1))
         ):
             with self.assertRaises(ValueError):
                 audit.fetch_json("https://api.github.com/repos/acme/throwaway", "secret")
