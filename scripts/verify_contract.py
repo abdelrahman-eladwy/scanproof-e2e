@@ -33,6 +33,7 @@ from pathlib import Path
 DECISION = {0: "VERIFIED", 1: "BLOCKED", 2: "INDETERMINATE"}
 UNREADABLE = ("could not be read", "has not started its downstream pipeline")
 LOAD_CODE = re.compile(r"\[([A-Z][A-Z0-9_]+)\]")
+UNREADABLE_TRIGGER = re.compile(r"trigger '(?P<trigger>[^']+)' could not be read \((?P<kind>[A-Z_]+)\)")
 MAX_AGE = timedelta(hours=1)
 
 
@@ -114,10 +115,24 @@ def judge(scenario: dict, rc: int, stderr: str, out: Path, args, now: datetime) 
     warnings = report.get("warnings", [])
     if scenario.get("warning") and not any(scenario["warning"] in w for w in warnings):
         problems.append(f"no warning containing {scenario['warning']!r}")
-    if not scenario.get("unreadable_ok"):
-        bad = [w for w in warnings if any(u in w for u in UNREADABLE)]
-        if bad:
-            problems.append(f"unexpected unreadable downstream: {bad}")
+    unreadable = [w for w in warnings if any(u in w for u in UNREADABLE)]
+    expected = scenario.get("unreadable")  # {trigger: [allowed kinds]}: exactly these, for these reasons
+    if expected is not None:
+        seen: dict[str, str] = {}
+        for w in unreadable:
+            m = UNREADABLE_TRIGGER.search(w)
+            if not m or m["trigger"] not in expected:
+                problems.append(f"unexpected unreadable downstream: {w}")
+            elif m["kind"] not in expected[m["trigger"]]:
+                problems.append(
+                    f"'{m['trigger']}' unreadable for {m['kind']}, expected {expected[m['trigger']]}"
+                )
+            else:
+                seen[m["trigger"]] = m["kind"]
+        for trigger in sorted(set(expected) - set(seen)):
+            problems.append(f"'{trigger}' was not reported unreadable for {expected[trigger]}")
+    elif not scenario.get("unreadable_ok") and unreadable:
+        problems.append(f"unexpected unreadable downstream: {unreadable}")
     return problems
 
 
