@@ -182,7 +182,7 @@ def main(argv: list[str] | None = None) -> int:
             args.repo, args.branch, args.check, args.app_id, os.environ.get("GH_TOKEN")
         )
         exit_code = 0 if result["result"] == "PASS_STATIC_PREFLIGHT" else 1
-    except (urllib.error.HTTPError, urllib.error.URLError, ValueError, KeyError, TypeError) as exc:
+    except (urllib.error.HTTPError, urllib.error.URLError, ValueError, KeyError, TypeError, AttributeError) as exc:
         # Never print an Authorization header or token. URL and numerical status only.
         status = exc.code if isinstance(exc, urllib.error.HTTPError) else None
         result = {
