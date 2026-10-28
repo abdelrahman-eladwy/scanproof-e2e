@@ -1,0 +1,81 @@
+# A read-only source-control preflight, NOT GitLab policy enforcement proof.
+# Manual audit is expected to fail or be INDETERMINATE until staging is configured.
+name: gitlab-policy-preflight
+
+on:
+  pull_request:
+    paths:
+      - "scripts/audit_gitlab_policy_project.py"
+      - "scripts/test_audit_gitlab_policy_project.py"
+      - "docs/gitlab-policy-preflight.md"
+      - ".github/workflows/gitlab-policy-preflight.yml"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/audit_gitlab_policy_project.py"
+      - "scripts/test_audit_gitlab_policy_project.py"
+      - "docs/gitlab-policy-preflight.md"
+      - ".github/workflows/gitlab-policy-preflight.yml"
+  workflow_dispatch:
+    inputs:
+      gitlab_url:
+        description: "GitLab origin (HTTPS only)"
+        required: true
+        type: string
+        default: "https://gitlab.com"
+      policy_project:
+        description: "Separately owned GitLab security policy project path"
+        required: true
+        type: string
+      policy_branch:
+        description: "Protected branch holding the policy"
+        required: true
+        type: string
+        default: "main"
+      security_group_id:
+        description: "Numeric ID of independently controlled security group"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  self-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Fail-closed policy-owner and token-safety regressions
+        run: python -m unittest -q scripts/test_audit_gitlab_policy_project.py
+
+  audit:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    needs: [self-test]
+    runs-on: ubuntu-latest
+    env:
+      GITLAB_TOKEN: ${{ secrets.GITLAB_POLICY_AUDIT_TOKEN }}
+      AUDIT_URL: ${{ inputs.gitlab_url }}
+      AUDIT_PROJECT: ${{ inputs.policy_project }}
+      AUDIT_BRANCH: ${{ inputs.policy_branch }}
+      AUDIT_GROUP: ${{ inputs.security_group_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read-only audit of independently owned policy-project branch
+        run: >-
+          python scripts/audit_gitlab_policy_project.py
+          --url "$AUDIT_URL" --project "$AUDIT_PROJECT"
+          --branch "$AUDIT_BRANCH" --security-group-id "$AUDIT_GROUP"
+          --output evidence/gitlab-policy-branch.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: gitlab-policy-branch-preflight
+          path: evidence/gitlab-policy-branch.json
+          if-no-files-found: warn
