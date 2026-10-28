@@ -92,6 +92,8 @@ Usage is small: 4 short Semgrep jobs per week. Put nothing secret in either proj
    Actions*: under **Secrets** add `GITLAB_COPIES_TOKEN` = the token; under **Variables** add
    `GITLAB_COPIES_PROJECT` = `<you>/scanproof-copies` (a variable, not a secret: the project is
    public). Then *Actions > copies-contract > Run workflow*. Without the secret, `verify-gitlab`
-   fails with a message naming it. When the token expires, create a new one and replace the secret. Until the
+   fails with a message naming it. When the token expires, create a new one and replace the secret. The weekly
+   [`gitlab-contract`](../.github/workflows/gitlab-contract.yml) (public gitlab.com projects) uses the same
+   secret, for the same rate-limit reason. Until the
    variable exists, every run shows a `copies gitlab` warning and `verify-gitlab` is skipped, so
    scanproof#44 cannot be closed by a skipped job.

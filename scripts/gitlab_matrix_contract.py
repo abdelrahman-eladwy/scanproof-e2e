@@ -15,7 +15,8 @@ matrix. It does the equivalent from the policy side, on real names:
 
 A run that writes no report never passes either case (scanproof-e2e#4).
 
-Only job results are judged (no report is read), so anonymous access is enough.
+Only job results are judged (no report is read). Reads use GITLAB_TOKEN: gitlab.com allows only
+60 anonymous API requests per hour per IP.
 Usage: python scripts/gitlab_matrix_contract.py <out dir>
 """
 
@@ -71,7 +72,7 @@ def verify(
     policy_path = out / f"matrix-{tag}.policy.json"  # JSON is valid YAML
     policy_path.write_text(json.dumps(policy, indent=2), encoding="utf-8")
     result_path = out / f"matrix-{tag}.json"
-    cmd = ["scanproof", "verify", "--anonymous", "-P", str(policy_path),
+    cmd = ["scanproof", "verify", "-P", str(policy_path),
            "--pipeline", str(pipeline), "-o", str(result_path)]  # fmt: skip
     result_path.unlink(missing_ok=True)  # never judge a report left by an earlier run
     rc = subprocess.run(cmd, check=False).returncode
