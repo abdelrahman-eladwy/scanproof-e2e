@@ -8,6 +8,10 @@ on:
     paths:
       - "scripts/audit_github_gate.py"
       - "scripts/test_audit_github_gate.py"
+      - "scripts/audit_github_environment.py"
+      - "scripts/test_audit_github_environment.py"
+      - "scripts/audit_github_environment.py"
+      - "scripts/test_audit_github_environment.py"
       - "scripts/audit_github_gate_trials.py"
       - "scripts/test_audit_github_gate_trials.py"
       - ".github/workflows/github-gate-trials.yml"
@@ -42,6 +46,11 @@ on:
         default: "15368"
         required: true
         type: string
+      environment_name:
+        description: "Protected staging deployment environment to audit"
+        default: "staging"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -60,6 +69,7 @@ jobs:
         run: >-
           python -m unittest -q
           scripts/test_audit_github_gate.py
+          scripts/test_audit_github_environment.py
           scripts/test_audit_github_gate_trials.py
 
   audit:
@@ -72,6 +82,7 @@ jobs:
       AUDIT_BRANCH: ${{ inputs.branch }}
       AUDIT_CONTEXT: ${{ inputs.status_check }}
       AUDIT_APP_ID: ${{ inputs.trusted_app_id }}
+      AUDIT_ENVIRONMENT: ${{ inputs.environment_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -82,9 +93,16 @@ jobs:
           --repo "$AUDIT_REPO" --branch "$AUDIT_BRANCH"
           --check "$AUDIT_CONTEXT" --app-id "$AUDIT_APP_ID"
           --output audit/result.json
+      - name: Assert independently reviewed staging environment protections
+        if: always()
+        run: >-
+          python scripts/audit_github_environment.py
+          --repo "$AUDIT_REPO" --branch "$AUDIT_BRANCH"
+          --environment "$AUDIT_ENVIRONMENT"
+          --output audit/environment.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: github-protection-preflight-evidence
-          path: audit/result.json
+          path: audit/
           if-no-files-found: warn

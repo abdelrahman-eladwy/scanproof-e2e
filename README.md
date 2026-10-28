@@ -24,6 +24,8 @@ manually to test any branch, tag or commit: **Actions > workflow > Run workflow*
 | [`copies-contract`](.github/workflows/copies-contract.yml) | daily, manual, relevant pull requests | Copy completeness (scanproof#65): real reusable-workflow callers, a removed caller, production and waiver rejections; real GitLab child pipelines, incl. an inaccessible one, once [set up](docs/gitlab-copies.md) |
 | [`fixtures`](.github/workflows/fixtures.yml) | manual | Generates real reports from every supported scanner (no ScanProof involved) |
 
+For protected-gate staging acceptance, use the [GitHub ruleset preflight](docs/github-protected-gate.md), [protected environment audit](docs/github-staging-environment.md), and [negative PR observation protocol](docs/github-protected-trial-evidence.md). These are read-only evidence tools, **not** proof of deployment-bypass resistance without real denied trials.
+
 `reusable-attest.yml`, `reusable-scan.yml` and `reusable-copy.yml` are called by the contract workflows; they are part
 of what is being tested, not standalone jobs.
 

@@ -7,7 +7,7 @@ This documents the read-only observational audit for [E2E #19](https://github.co
 ## Administrator setup (sacrificial repository only)
 
 1. Use a throwaway GitHub repository and a distinct security reviewer/CODEOWNER. Require the exact ScanProof verification check from a trusted app, strict status checking, mandatory review/CODEOWNER approval, no broad bypass and no force push/deletion. The security workflow and policy must be independently controlled. Protect a staging-only environment and use no production credentials.
-2. Run the existing [read-only ruleset preflight](github-protected-gate.md), binding its JSON to the target repository/branch and actual check context. A green self-test job is NOT a passed live audit.
+2. Run the existing [read-only ruleset preflight](github-protected-gate.md) **and** [staging environment preflight](github-staging-environment.md), binding both JSON reports to the target repository/branch, actual status check and target deployment environment. A protected environment is not a substitute for enforcing the required check. A green self-test job is NOT a passed live audit.
 3. Create four independent sacrificial PRs into the protected branch, without unrelated merge conflicts:
 
 | Case | PR content | Expected gate state |
