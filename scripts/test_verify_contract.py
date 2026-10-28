@@ -144,6 +144,22 @@ class Harness(unittest.TestCase):
         self.assertEqual(self.run_with(SCENARIO, 1, self.mutated(warnings=w)), 1)
         self.assertEqual(self.run_with(SCENARIO | {"unreadable_ok": True}, 1, self.mutated(warnings=w)), 0)
 
+    def test_unreadable_must_be_the_listed_trigger_for_an_access_reason(self) -> None:
+        s = SCENARIO | {"unreadable": {"svc-private": ["AUTH", "NOT_FOUND"]}}
+
+        def warn(trigger, kind):
+            return f"Downstream pipeline of trigger '{trigger}' could not be read ({kind}); jobs ..."
+
+        self.assertEqual(self.run_with(s, 1, self.mutated(warnings=[warn("svc-private", "NOT_FOUND")])), 0)
+        self.assertEqual(self.run_with(s, 1, self.mutated(warnings=[warn("svc-private", "AUTH")])), 0)
+        # Unreadable, but not because access is denied: proves nothing.
+        for kind in ("RATE_LIMITED", "SERVER", "NETWORK"):
+            self.assertEqual(self.run_with(s, 1, self.mutated(warnings=[warn("svc-private", kind)])), 1)
+        # Another child unreadable too, or the private one not reported at all.
+        both = [warn("svc-private", "NOT_FOUND"), warn("svc-a", "RATE_LIMITED")]
+        self.assertEqual(self.run_with(s, 1, self.mutated(warnings=both)), 1)
+        self.assertEqual(self.run_with(s, 1, GOOD), 1)
+
     def test_load_error_needs_exact_codes_and_no_report(self) -> None:
         s = {"policy": "policies/x/waiver.yaml", "exit": 3, "load_errors": ["WAIVER_HIDES_UNDECLARED_COPIES"]}
         err = "waivers[0] (SAST/copies_declared): ... [WAIVER_HIDES_UNDECLARED_COPIES]"

@@ -81,7 +81,12 @@ Usage is small: 4 short Semgrep jobs per week. Put nothing secret in either proj
      "https://gitlab.com/api/v4/projects/<url-encoded private project path>"
    ```
 
-   If it could, the `inaccessible` scenarios fail rather than pass.
+   The contract proves this on every run, twice: before the `inaccessible` scenarios it asks
+   for the `svc-private` child's jobs with the token and requires HTTP 403 or 404 (a 200, or a
+   429 / 5xx that proves nothing, fails the run); and each `inaccessible` scenario requires
+   ScanProof to report `svc-private`, and only it, unreadable for `AUTH` or `NOT_FOUND`. The
+   token is sent only to the gitlab.com API over https, never on a redirect (redirects are
+   refused).
 
 7. **Connect this repository.** In `scanproof-e2e` on GitHub: *Settings > Secrets and variables >
    Actions*: under **Secrets** add `GITLAB_COPIES_TOKEN` = the token; under **Variables** add

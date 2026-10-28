@@ -26,7 +26,7 @@ def pipeline(pid: int, age_days: float = 1, sha: str = "c" * 40) -> list[dict]:
 
 
 class Contract(unittest.TestCase):
-    def run_with(self, responses: dict[str, object], verify_rc: int = 0, env=None):
+    def run_with(self, responses: dict[str, object], verify_rc: int = 0, env=None, private=None):
         """responses: ref -> JSON body (or an exception to raise). Returns (rc, verify calls)."""
         calls: list[list[str]] = []
 
@@ -46,6 +46,9 @@ class Contract(unittest.TestCase):
         with (
             mock.patch.object(gcc, "get_json", fake_get),
             mock.patch.object(gcc.verify_contract, "main", fake_verify),
+            mock.patch.object(
+                gcc, "assert_private_child_unreadable", private or (lambda project, pid: "HTTP 404")
+            ),
             mock.patch.dict(os.environ, env, clear=False),
             contextlib.redirect_stdout(io.StringIO()),
         ):
@@ -98,19 +101,31 @@ class Contract(unittest.TestCase):
     def test_token_is_sent_as_header_and_not_in_url_or_errors(self) -> None:
         seen = []
 
-        def fake_urlopen(req, timeout):
+        def fake_open(req, timeout):
             seen.append(req)
-            raise OSError("HTTP Error 401: Unauthorized")
+            raise OSError("connection reset")
 
         with (
             mock.patch.dict(os.environ, {"GITLAB_TOKEN": "glpat-secret"}),
-            mock.patch.object(gcc.urllib.request, "urlopen", fake_urlopen),
+            mock.patch.object(gcc._OPENER, "open", fake_open),
         ):
             with self.assertRaises(gcc.ContractError) as err:
-                gcc.get_json("https://gitlab.com/api/v4/projects/x/pipelines")
-        self.assertEqual(seen[0].get_header("Authorization"), "Bearer glpat-secret")
+                gcc.get_json(f"{gcc.API}/projects/x/pipelines")
+        # Unredirected: urllib would copy ordinary headers onto a redirect, to any host.
+        self.assertEqual(seen[0].unredirected_hdrs.get("Authorization"), "Bearer glpat-secret")
+        self.assertNotIn("Authorization", seen[0].headers)
         self.assertNotIn("glpat-secret", seen[0].full_url)
         self.assertNotIn("glpat-secret", str(err.exception))
+
+    def test_private_child_readable_skips_inaccessible_scenarios_and_fails(self) -> None:
+        def readable(project, pid):
+            raise gcc.ContractError("the token CAN read the private child pipeline 9")
+
+        rc, calls = self.run_with(
+            {"main": pipeline(1), "inaccessible": pipeline(2)}, private=readable
+        )
+        self.assertEqual(rc, 1)
+        self.assertEqual([c[0] for c in calls], [gcc.SCENARIOS["main"]])
 
     def test_scenario_files_exist_and_name_their_policies(self) -> None:
         import json
@@ -125,3 +140,61 @@ class Contract(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Transport(unittest.TestCase):
+    def test_redirects_are_refused(self) -> None:
+        handler = gcc._RefuseRedirects()
+        req = gcc.urllib.request.Request(f"{gcc.API}/projects/x")
+        with self.assertRaises(gcc.ContractError):
+            handler.redirect_request(req, None, 302, "Found", {}, "http://evil.example/steal")
+
+    def test_opener_uses_the_refusing_handler(self) -> None:
+        kinds = [type(h) for h in gcc._OPENER.handlers]
+        self.assertIn(gcc._RefuseRedirects, kinds)
+        self.assertNotIn(gcc.urllib.request.HTTPRedirectHandler, kinds)
+
+    def test_token_is_only_sent_to_the_https_api(self) -> None:
+        with mock.patch.object(gcc._OPENER, "open") as opened:
+            with self.assertRaises(gcc.ContractError):
+                gcc.request("https://elsewhere.example/api/v4/projects/x")
+            with mock.patch.object(gcc, "API", "http://gitlab.com/api/v4"):
+                with self.assertRaises(gcc.ContractError):
+                    gcc.request("http://gitlab.com/api/v4/projects/x")
+        opened.assert_not_called()
+
+
+BRIDGES = [
+    {"name": "svc-a", "downstream_pipeline": {"id": 11, "project_id": 1}},
+    {"name": "svc-private", "downstream_pipeline": {"id": 99, "project_id": 7}},
+]
+
+
+class PrivateChild(unittest.TestCase):
+    def check(self, child_status: int, bridges=BRIDGES):
+        def fake_request(url):
+            if url.endswith("/bridges"):
+                return 200, bridges
+            self.assertTrue(url.endswith("/projects/7/pipelines/99/jobs"), url)
+            return child_status, None
+
+        with mock.patch.object(gcc, "request", fake_request):
+            return gcc.assert_private_child_unreadable("grp/scanproof-copies", 5)
+
+    def test_access_denied_is_proof(self) -> None:
+        for status in (403, 404):
+            self.assertIn(f"HTTP {status}", self.check(status))
+
+    def test_readable_private_child_fails(self) -> None:
+        with self.assertRaisesRegex(gcc.ContractError, "CAN read"):
+            self.check(200)
+
+    def test_other_errors_prove_nothing(self) -> None:
+        for status in (401, 429, 500, 502):
+            with self.assertRaisesRegex(gcc.ContractError, "not proven"):
+                self.check(status)
+
+    def test_missing_or_unstarted_private_trigger_fails(self) -> None:
+        for bridges in ([BRIDGES[0]], [{"name": "svc-private", "downstream_pipeline": None}]):
+            with self.assertRaisesRegex(gcc.ContractError, "cannot prove"):
+                self.check(404, bridges)

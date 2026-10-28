@@ -14,8 +14,14 @@ Reads are authenticated with GITLAB_TOKEN, a read_api token of an account that i
 of the private project (docs/gitlab-copies.md). Anonymous reads are not an option: since
 19 October 2026 gitlab.com allows 60 unauthenticated API requests per hour per IP, and one run
 needs about 66. The token is sent only in a header to the gitlab.com API, never printed.
-If the token could read the private child, the `inaccessible` scenarios fail, so a token with
-too much access can't make the contract pass.
+The token is never sent on a redirect: redirects are refused outright.
+
+Proof that the private child stays unreadable, twice over:
+1. Before the `inaccessible` scenarios, this script asks the API for the jobs of the
+   'svc-private' child pipeline with the same token and requires HTTP 403 or 404. A 200 (the
+   token can read it) or any other answer (429, 5xx: nothing proven) fails the run.
+2. Those scenarios then require ScanProof to report 'svc-private', and only it, as unreadable
+   for an access reason (AUTH / NOT_FOUND), not RATE_LIMITED or SERVER.
 
 Usage: GITLAB_COPIES_PROJECT=group/scanproof-copies GITLAB_TOKEN=... \
            python scripts/gitlab_copies_contract.py
@@ -26,6 +32,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import UTC, datetime, timedelta
@@ -35,6 +42,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import verify_contract  # noqa: E402
 
 API = os.environ.get("GITLAB_URL", "https://gitlab.com").rstrip("/") + "/api/v4"
+PRIVATE_TRIGGER = "svc-private"  # the `inaccessible` branch's child in the private project
 SCENARIOS = {
     "main": "policies/copies/gitlab-main-scenarios.json",
     "inaccessible": "policies/copies/gitlab-inaccessible-scenarios.json",
@@ -45,17 +53,71 @@ class ContractError(Exception):
     pass
 
 
-def get_json(url: str):
-    headers = {"Accept": "application/json"}
+class _RefuseRedirects(urllib.request.HTTPRedirectHandler):
+    """The GitLab API answers these GETs directly; a redirect is refused, never followed, so the
+    token can't be carried to another host or to plain http."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise ContractError(f"GET {req.full_url}: refused HTTP {code} redirect to {newurl}")
+
+
+_OPENER = urllib.request.build_opener(_RefuseRedirects)
+
+
+def request(url: str) -> tuple[int, object]:
+    """(HTTP status, parsed JSON or None). Raises ContractError on transport errors."""
+    if not API.startswith("https://") or not url.startswith(API + "/"):
+        raise ContractError(f"refusing to send the token outside {API!r} over https: {url}")
+    req = urllib.request.Request(url, headers={"Accept": "application/json"})
     token = os.environ.get("GITLAB_TOKEN", "").strip()
     if token:
-        headers["Authorization"] = f"Bearer {token}"
-    req = urllib.request.Request(url, headers=headers)
+        # Unredirected: not copied onto a redirect, even if one were ever followed.
+        req.add_unredirected_header("Authorization", f"Bearer {token}")
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 - fixed https API
-            return json.loads(resp.read(2_000_000))
+        with _OPENER.open(req, timeout=30) as resp:
+            return resp.status, json.loads(resp.read(2_000_000))
+    except urllib.error.HTTPError as exc:
+        return exc.code, None
     except (OSError, ValueError) as exc:
         raise ContractError(f"GET {url}: {exc}") from exc
+
+
+def get_json(url: str):
+    status, body = request(url)
+    if status != 200:
+        raise ContractError(f"GET {url}: HTTP {status}")
+    return body
+
+
+def assert_private_child_unreadable(project: str, pipeline_id: int) -> str:
+    """The token must be refused on the private child's jobs (403 / 404). Returns evidence."""
+    path = urllib.parse.quote(project, safe="")
+    bridges = get_json(f"{API}/projects/{path}/pipelines/{pipeline_id}/bridges")
+    child = next(
+        (
+            b.get("downstream_pipeline")
+            for b in bridges if isinstance(b, dict) and b.get("name") == PRIVATE_TRIGGER
+        ),
+        None,
+    )
+    if not isinstance(child, dict) or not child.get("id") or not child.get("project_id"):
+        raise ContractError(
+            f"pipeline {pipeline_id} has no started '{PRIVATE_TRIGGER}' child: cannot prove it "
+            "is unreadable"
+        )
+    url = f"{API}/projects/{int(child['project_id'])}/pipelines/{int(child['id'])}/jobs"
+    status, _ = request(url)
+    if status == 200:
+        raise ContractError(
+            f"the token CAN read the private child pipeline {child['id']}: use an account that "
+            "is not a member of the private project"
+        )
+    if status not in (403, 404):
+        raise ContractError(
+            f"private child pipeline {child['id']}: HTTP {status}, not an access denial; "
+            "unreadability not proven"
+        )
+    return f"private child pipeline {child['id']} (project {child['project_id']}): HTTP {status}"
 
 
 def latest_pipeline(project: str, ref: str, max_age: timedelta, now: datetime) -> dict:
@@ -103,6 +165,14 @@ def main(argv: list[str] | None = None) -> int:
             failed = True
             continue
         print(f"::notice title=copies gitlab {ref}::pipeline {pipeline['id']} @ {pipeline['sha'][:12]}")
+        if ref == "inaccessible":
+            try:
+                evidence = assert_private_child_unreadable(project, pipeline["id"])
+            except ContractError as exc:
+                print(f"::error title=copies gitlab private child::{exc}")
+                failed = True
+                continue
+            print(f"::notice title=copies gitlab private child::token refused: {evidence}")
         rc = verify_contract.main(
             [scenarios, "--provider", "gitlab", "--project", project,
              "--pipeline", str(pipeline["id"]), "--sha", pipeline["sha"],
