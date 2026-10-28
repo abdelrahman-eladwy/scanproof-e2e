@@ -147,7 +147,8 @@ jobs:
       - uses: ./.github/actions/install-scanproof
         with:
           ref: ${{ inputs.scanproof_ref || 'main' }}
-      - name: ScanProof verifies this run
+      - name: ScanProof verifies this run (first attempt)
+        if: ${{ github.run_attempt == 1 }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -172,9 +173,33 @@ jobs:
           check policies/github/scoped-ok.yaml 0
           check policies/github/scoped-missing.yaml 2
           exit $failed
+      # Re-running only the gate can expose synthetic new-attempt job IDs for scans that
+      # actually ran on an older attempt. Their masking annotations may no longer be
+      # accessible; ScanProof must return UNKNOWN or FAIL, never a false VERIFIED (#90).
+      - name: Gate-only rerun cannot verify inherited masked scans (scanproof#90)
+        if: ${{ github.run_attempt > 1 }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          failed=0
+          for policy in masked-step matrix noisy; do
+            out="rerun-$policy.json"
+            scanproof verify --provider github -P "policies/github/$policy.yaml" \
+              --pipeline "${{ github.run_id }}" -p "${{ github.repository }}" -o "$out"
+            rc=$?
+            got=$(python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); print(",".join(sorted({c["code"] for q in r["requirements"] for c in q["checks"] if c["outcome"] not in ("PASS","NOT_APPLICABLE")})))' "$out")
+            echo "::notice title=gate-only rerun $policy::exit $rc (must be nonzero); codes [$got]"
+            if [ "$rc" != 1 ] && [ "$rc" != 2 ]; then failed=1; fi
+            case "$got" in
+              *STEP_MASKING_UNKNOWN*|*FAILURE_MASKED_BY_ALLOW_FAILURE*) ;;
+              *) failed=1 ;;
+            esac
+          done
+          exit $failed
       # Its own step: GitHub keeps only 10 annotations per step, and each result below is one.
       - name: ScanProof detects a removed matrix leg (scanproof#60)
-        if: ${{ always() }}
+        if: ${{ always() && github.run_attempt == 1 }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
