@@ -6,7 +6,8 @@
 #   'copy-web / copy-sast'); `verify-github` checks every scenario in
 #   policies/copies/github-scenarios.json against the run.
 # - GitLab: real child pipelines in a public gitlab.com project (docs/gitlab-copies.md), read
-#   anonymously: branch `main` (two children) and `inaccessible` (plus a private child).
+#   with the secret GITLAB_COPIES_TOKEN (read_api, an account outside the private project):
+#   branch `main` (two children) and `inaccessible` (plus a private child).
 #   Runs once the repository variable GITLAB_COPIES_PROJECT is set; until then
 #   `gitlab-not-configured` warns on every run.
 #
@@ -106,9 +107,11 @@ jobs:
       - uses: ./.github/actions/install-scanproof
         with:
           ref: ${{ inputs.scanproof_ref || 'main' }}
-      - name: Copy scenarios against real GitLab child pipelines (anonymous)
+      - name: Copy scenarios against real GitLab child pipelines
         env:
           GITLAB_COPIES_PROJECT: ${{ vars.GITLAB_COPIES_PROJECT }}
+          # read_api token of an account that is not a member of the private child project.
+          GITLAB_TOKEN: ${{ secrets.GITLAB_COPIES_TOKEN }}
         run: python scripts/gitlab_copies_contract.py
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()

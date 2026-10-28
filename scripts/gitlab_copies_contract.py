@@ -4,14 +4,21 @@ The public project named by GITLAB_COPIES_PROJECT (setup: docs/gitlab-copies.md)
 branches whose scheduled pipelines are the scenarios:
 
 - `main`:         'svc-a > copy-sast' and 'svc-b > copy-sast' (two child pipelines);
-- `inaccessible`: the same, plus 'svc-private', a child in a private project (403 anonymously).
+- `inaccessible`: the same, plus 'svc-private', a child in a private project the token's
+                  account is not a member of (unreadable: 404 to a non-member).
 
 For each branch this picks the latest *successful* pipeline, refuses one older than
 MAX_AGE_DAYS (a contract must not keep passing on a pipeline from months ago), and runs that
 branch's scenarios through verify_contract.py with the pipeline's own commit as provenance.
-Everything is read anonymously: no GitLab token is involved.
+Reads are authenticated with GITLAB_TOKEN, a read_api token of an account that is NOT a member
+of the private project (docs/gitlab-copies.md). Anonymous reads are not an option: since
+19 October 2026 gitlab.com allows 60 unauthenticated API requests per hour per IP, and one run
+needs about 66. The token is sent only in a header to the gitlab.com API, never printed.
+If the token could read the private child, the `inaccessible` scenarios fail, so a token with
+too much access can't make the contract pass.
 
-Usage: GITLAB_COPIES_PROJECT=group/scanproof-copies python scripts/gitlab_copies_contract.py
+Usage: GITLAB_COPIES_PROJECT=group/scanproof-copies GITLAB_TOKEN=... \
+           python scripts/gitlab_copies_contract.py
 """
 
 from __future__ import annotations
@@ -39,7 +46,11 @@ class ContractError(Exception):
 
 
 def get_json(url: str):
-    req = urllib.request.Request(url, headers={"Accept": "application/json"})
+    headers = {"Accept": "application/json"}
+    token = os.environ.get("GITLAB_TOKEN", "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 - fixed https API
             return json.loads(resp.read(2_000_000))
@@ -74,6 +85,13 @@ def main(argv: list[str] | None = None) -> int:
     if not project:
         print("::error title=copies gitlab::GITLAB_COPIES_PROJECT is not set")
         return 1
+    if not os.environ.get("GITLAB_TOKEN", "").strip():
+        print(
+            "::error title=copies gitlab::GITLAB_TOKEN is not set: add the repository secret "
+            "GITLAB_COPIES_TOKEN (docs/gitlab-copies.md). Anonymous gitlab.com access allows "
+            "60 requests per hour per IP, fewer than one run needs"
+        )
+        return 1
     max_age = timedelta(days=int(os.environ.get("MAX_AGE_DAYS", "8")))
     now = datetime.now(UTC)
     failed = False
@@ -87,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"::notice title=copies gitlab {ref}::pipeline {pipeline['id']} @ {pipeline['sha'][:12]}")
         rc = verify_contract.main(
             [scenarios, "--provider", "gitlab", "--project", project,
-             "--pipeline", str(pipeline["id"]), "--sha", pipeline["sha"], "--anonymous",
+             "--pipeline", str(pipeline["id"]), "--sha", pipeline["sha"],
              "--out-dir", f"copies-gitlab/{ref}", "--title", f"copies gitlab {ref}"]  # fmt: skip
         )
         failed |= rc != 0

@@ -41,15 +41,17 @@ class Contract(unittest.TestCase):
             calls.append(argv)
             return verify_rc
 
-        env = {"GITLAB_COPIES_PROJECT": "grp/scanproof-copies"} if env is None else env
+        if env is None:
+            env = {"GITLAB_COPIES_PROJECT": "grp/scanproof-copies", "GITLAB_TOKEN": "glpat-test"}
         with (
             mock.patch.object(gcc, "get_json", fake_get),
             mock.patch.object(gcc.verify_contract, "main", fake_verify),
             mock.patch.dict(os.environ, env, clear=False),
             contextlib.redirect_stdout(io.StringIO()),
         ):
-            if not env.get("GITLAB_COPIES_PROJECT"):
-                os.environ.pop("GITLAB_COPIES_PROJECT", None)
+            for key in ("GITLAB_COPIES_PROJECT", "GITLAB_TOKEN"):
+                if not env.get(key):
+                    os.environ.pop(key, None)
             return gcc.main(), calls
 
     def test_both_branches_verified_with_their_own_pipeline_and_commit(self) -> None:
@@ -60,7 +62,7 @@ class Contract(unittest.TestCase):
         main = by_file[gcc.SCENARIOS["main"]]
         self.assertEqual(main[main.index("--pipeline") + 1], "1")
         self.assertEqual(main[main.index("--sha") + 1], "a" * 40)
-        self.assertIn("--anonymous", main)
+        self.assertNotIn("--anonymous", main)  # gitlab.com allows 60 anonymous requests/hour
         other = by_file[gcc.SCENARIOS["inaccessible"]]
         self.assertEqual(other[other.index("--pipeline") + 1], "2")
 
@@ -88,6 +90,27 @@ class Contract(unittest.TestCase):
     def test_unset_project_fails(self) -> None:
         rc, calls = self.run_with({}, env={"GITLAB_COPIES_PROJECT": ""})
         self.assertEqual((rc, calls), (1, []))
+
+    def test_unset_token_fails_before_any_request(self) -> None:
+        rc, calls = self.run_with({}, env={"GITLAB_COPIES_PROJECT": "grp/p", "GITLAB_TOKEN": " "})
+        self.assertEqual((rc, calls), (1, []))
+
+    def test_token_is_sent_as_header_and_not_in_url_or_errors(self) -> None:
+        seen = []
+
+        def fake_urlopen(req, timeout):
+            seen.append(req)
+            raise OSError("HTTP Error 401: Unauthorized")
+
+        with (
+            mock.patch.dict(os.environ, {"GITLAB_TOKEN": "glpat-secret"}),
+            mock.patch.object(gcc.urllib.request, "urlopen", fake_urlopen),
+        ):
+            with self.assertRaises(gcc.ContractError) as err:
+                gcc.get_json("https://gitlab.com/api/v4/projects/x/pipelines")
+        self.assertEqual(seen[0].get_header("Authorization"), "Bearer glpat-secret")
+        self.assertNotIn("glpat-secret", seen[0].full_url)
+        self.assertNotIn("glpat-secret", str(err.exception))
 
     def test_scenario_files_exist_and_name_their_policies(self) -> None:
         import json

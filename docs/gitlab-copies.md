@@ -3,7 +3,10 @@
 The GitLab half of [`copies-contract`](../.github/workflows/copies-contract.yml) checks ScanProof's
 copy completeness ([scanproof#65](https://github.com/abdelrahman-eladwy/scanproof/issues/65)) on
 **real** gitlab.com child pipelines. It needs two GitLab projects that only the maintainer can
-create. Both are read **anonymously**: no GitLab token is stored in this repository.
+create. They are read with a **read-only token of a separate account** that is not a member of
+the private project (step 6). Anonymous reads stopped being enough on 19 October 2026, when
+gitlab.com limited unauthenticated API traffic to 60 requests per hour per IP; one contract run
+needs about 66.
 
 | Project | Visibility | Contents |
 |---|---|---|
@@ -15,7 +18,7 @@ create. Both are read **anonymously**: no GitLab token is stored in this reposit
 | Branch of `scanproof-copies` | Pipeline | Scenarios ([main](../policies/copies/gitlab-main-scenarios.json), [inaccessible](../policies/copies/gitlab-inaccessible-scenarios.json)) |
 |---|---|---|
 | `main` | `svc-a > copy-sast`, `svc-b > copy-sast` | both declared: exit 0 · `svc-c` declared (no such trigger, i.e. removed): exit 1 `REQUIRED_COPY_ABSENT` · production without `copies`: exit 2 `COPIES_UNDECLARED` · production with `copies`: exit 0 · compatible without `copies`: exit 0 + warning |
-| `inaccessible` | the same, plus `svc-private`, a child in the private project (403 anonymously) | `svc-private` declared: exit 2 `JOB_MAYBE_IN_UNREADABLE_PIPELINE` (unknown, **not** absent) · only `svc-a`, `svc-b` declared: exit 0 + "could not be read" warning · production without `copies`: exit 2 |
+| `inaccessible` | the same, plus `svc-private`, a child in the private project (unreadable to the token's account) | `svc-private` declared: exit 2 `JOB_MAYBE_IN_UNREADABLE_PIPELINE` (unknown, **not** absent) · only `svc-a`, `svc-b` declared: exit 0 + "could not be read" warning · production without `copies`: exit 2 |
 
 How ScanProof tells a missing copy from an unreadable pipeline:
 [Missing or unreadable](https://github.com/abdelrahman-eladwy/scanproof/blob/main/docs/advanced-policy.md#missing-or-unreadable-when-absence-is-proven).
@@ -57,7 +60,7 @@ Usage is small: 4 short Semgrep jobs per week. Put nothing secret in either proj
    `main` and one for `inaccessible` (e.g. `0 4 * * 1`). Press **Play** on both once and wait
    until both pipelines are green; the `inaccessible` one must show `svc-private` passing.
 
-5. **Check anonymous access** (no token): the public child jobs are readable, the private ones
+5. **Check public access** (a few anonymous requests are fine here): the public child jobs are readable, the private ones
    are not.
 
    ```bash
@@ -68,8 +71,22 @@ Usage is small: 4 short Semgrep jobs per week. Put nothing secret in either proj
      "https://gitlab.com/api/v4/projects/<private project id>/pipelines/<child id>/jobs"   # 403 or 404
    ```
 
-6. **Connect this repository.** In `scanproof-e2e` on GitHub: *Settings > Secrets and variables >
-   Actions > Variables*, add `GITLAB_COPIES_PROJECT` = `<you>/scanproof-copies` (a variable, not a
-   secret: the project is public). Then *Actions > copies-contract > Run workflow*. Until the
+6. **Read-only token.** Register a separate gitlab.com account (not yours: yours can read the
+   private project) and do not add it to the private project or its group. As that account:
+   *Edit profile > Access tokens > Add new token*, scope **`read_api` only**, with an expiry.
+   Check it can't see the private project (expect `404`):
+
+   ```bash
+   curl -s -o /dev/null -w '%{http_code}\n' -H "PRIVATE-TOKEN: <token>" \
+     "https://gitlab.com/api/v4/projects/<url-encoded private project path>"
+   ```
+
+   If it could, the `inaccessible` scenarios fail rather than pass.
+
+7. **Connect this repository.** In `scanproof-e2e` on GitHub: *Settings > Secrets and variables >
+   Actions*: under **Secrets** add `GITLAB_COPIES_TOKEN` = the token; under **Variables** add
+   `GITLAB_COPIES_PROJECT` = `<you>/scanproof-copies` (a variable, not a secret: the project is
+   public). Then *Actions > copies-contract > Run workflow*. Without the secret, `verify-gitlab`
+   fails with a message naming it. When the token expires, create a new one and replace the secret. Until the
    variable exists, every run shows a `copies gitlab` warning and `verify-gitlab` is skipped, so
    scanproof#44 cannot be closed by a skipped job.
