@@ -21,6 +21,16 @@ MAX_JSON_BYTES = 1024 * 1024
 API = "https://api.github.com"
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Never forward a GitHub bearer token to an arbitrary redirect destination."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError(req.full_url, code, "GitHub API redirect refused", headers, fp)
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect())
+
+
 def _branch_covered(ruleset: dict, branch: str, default_branch: str) -> bool:
     conditions = ruleset.get("conditions", {}).get("ref_name", {})
     includes = conditions.get("include", [])
@@ -122,7 +132,7 @@ def _fetch_json(url: str, token: str | None) -> dict | list:
     if token:
         headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(request, timeout=20) as response:
+    with _OPENER.open(request, timeout=20) as response:
         payload = response.read(MAX_JSON_BYTES + 1)
     if len(payload) > MAX_JSON_BYTES:
         raise ValueError("GitHub ruleset API response exceeded 1 MiB")
@@ -133,9 +143,13 @@ def collect(repo: str, branch: str, check: str, app_id: int, token: str | None) 
     meta = _fetch_json(f"{API}/repos/{repo}", token)
     if not isinstance(meta, dict) or not isinstance(meta.get("default_branch"), str):
         raise ValueError("Repository metadata did not include a default branch")
-    summaries = _fetch_json(f"{API}/repos/{repo}/rulesets?includes_parents=true", token)
+    summaries = _fetch_json(
+        f"{API}/repos/{repo}/rulesets?includes_parents=true&per_page=100", token
+    )
     if not isinstance(summaries, list):
         raise ValueError("GitHub ruleset list is not a JSON array")
+    if len(summaries) >= 100:
+        raise ValueError("GitHub ruleset list may be truncated (100+); review pagination")
     details = []
     for summary in summaries:
         if not isinstance(summary, dict) or not isinstance(summary.get("id"), int):
