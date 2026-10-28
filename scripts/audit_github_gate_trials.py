@@ -13,7 +13,6 @@ from datetime import UTC, datetime
 import json
 import os
 import re
-import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -79,6 +78,10 @@ def observe_pr(repo: str, branch: str, case: str, number: int, check: str, app_i
         app = found.get("app")
         if not isinstance(app, dict) or app.get("id") != app_id:
             raise ValueError("Gate check has unexpected GitHub App source")
+        if found.get("head_sha") != sha:
+            raise ValueError("Gate check belongs to an unexpected head commit")
+        if found.get("status") != "completed":
+            raise ValueError("Gate check is not completed")
     conclusion = found.get("conclusion") if found else None
     merge_state = pr.get("mergeable_state")
     if merge_state not in ("clean", "blocked", "dirty", "behind", "unstable", "draft", "unknown"):
