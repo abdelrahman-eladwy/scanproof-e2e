@@ -89,6 +89,30 @@ class Harness(unittest.TestCase):
     def test_wrong_exit_fails(self) -> None:
         self.assertEqual(self.run_with(SCENARIO, 2, self.mutated(exit_code=2, decision="INDETERMINATE")), 1)
 
+    def test_partial_rate_limit_stays_failed_and_explains_cause(self) -> None:
+        report = self.mutated(exit_code=2, decision="INDETERMINATE",
+                              warnings=["Downstream svc-a could not be read (RATE_LIMITED)"])
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "report.json"
+            report["generated_at"] = datetime.now(UTC).isoformat()
+            out.write_text(json.dumps(report))
+            args = mock.Mock(provider="github", project=PROJECT, pipeline=PIPELINE, sha=SHA)
+            problems = vc.judge(SCENARIO, 2, "", out, args, datetime.now(UTC))
+        self.assertTrue(any("RATE_LIMITED" in p for p in problems))
+        self.assertTrue(any("exit 2, expected 1" in p for p in problems))
+
+    def test_spacing_does_not_retry_failed_scenarios(self) -> None:
+        self.scenarios.write_text(json.dumps([SCENARIO, SCENARIO, SCENARIO]))
+        argv = [str(self.scenarios), "--provider", "gitlab", "--project", PROJECT,
+                "--pipeline", str(PIPELINE), "--out-dir", str(self.dir / "o"),
+                "--scenario-delay", "60"]
+        with (mock.patch.object(vc, "run", return_value=["mismatch"]) as run,
+              mock.patch.object(vc.time, "sleep") as sleep,
+              contextlib.redirect_stdout(io.StringIO())):
+            self.assertEqual(vc.main(argv), 1)
+        self.assertEqual(run.call_count, 3)
+        self.assertEqual(sleep.call_args_list, [mock.call(60), mock.call(60)])
+
     def test_missing_report_fails(self) -> None:
         self.assertEqual(self.run_with(SCENARIO, 1, None), 1)
 

@@ -35,6 +35,11 @@ on:
 permissions:
   contents: read
 
+# All refs share the anonymous GitLab quota; let an active contract finish.
+concurrency:
+  group: copies-contract-anonymous-gitlab
+  cancel-in-progress: false
+
 jobs:
   self-test:
     runs-on: ubuntu-latest
@@ -93,6 +98,7 @@ jobs:
           path: copies-github/
 
   verify-gitlab:
+    timeout-minutes: 30
     needs: [self-test]
     if: ${{ vars.GITLAB_COPIES_PROJECT != '' }}
     runs-on: ubuntu-latest

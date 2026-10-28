@@ -27,6 +27,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -107,6 +108,13 @@ def judge(scenario: dict, rc: int, stderr: str, out: Path, args, now: datetime) 
     if codes != sorted(scenario.get("codes", [])):
         problems.append(f"codes {codes}, expected {sorted(scenario.get('codes', []))}")
 
+    # Partial provider failures appear as warnings, rather than a top-level error.
+    # Keep their cause visible when a policy expectation fails (#8 live 429 incident).
+    if problems:
+        partial = [w for w in report.get("warnings", []) if "RATE_LIMITED" in w]
+        if partial:
+            problems.append(f"partial provider failures: {partial}")
+
     missing_jobs = sorted(set(scenario.get("jobs", [])) - evaluated_jobs(report))
     if missing_jobs:
         problems.append(f"jobs not evaluated: {missing_jobs}")
@@ -143,7 +151,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out-dir", default="contract-out")
     ap.add_argument("--anonymous", action="store_true")
     ap.add_argument("--title", default="copies")
+    ap.add_argument("--scenario-delay", type=int, default=0,
+                    help="Seconds between scenarios (0..300); no result is retried")
     args = ap.parse_args(argv)
+    if not 0 <= args.scenario_delay <= 300:
+        ap.error("--scenario-delay must be between 0 and 300 seconds")
 
     scenarios = json.loads(Path(args.scenarios).read_text(encoding="utf-8"))
     if not scenarios:
@@ -152,7 +164,9 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     failed = 0
-    for scenario in scenarios:
+    for index, scenario in enumerate(scenarios):
+        if index and args.scenario_delay:
+            time.sleep(args.scenario_delay)
         name = Path(scenario["policy"]).stem
         problems = run(scenario, args, out_dir)
         if problems:

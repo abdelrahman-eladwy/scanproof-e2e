@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 import urllib.parse
 import urllib.request
 from datetime import UTC, datetime, timedelta
@@ -77,7 +78,9 @@ def main(argv: list[str] | None = None) -> int:
     max_age = timedelta(days=int(os.environ.get("MAX_AGE_DAYS", "8")))
     now = datetime.now(UTC)
     failed = False
-    for ref, scenarios in SCENARIOS.items():
+    for index, (ref, scenarios) in enumerate(SCENARIOS.items()):
+        if index:
+            time.sleep(60)  # also space the boundary between branch scenario sets
         try:
             pipeline = latest_pipeline(project, ref, max_age, now)
         except ContractError as exc:
@@ -88,7 +91,8 @@ def main(argv: list[str] | None = None) -> int:
         rc = verify_contract.main(
             [scenarios, "--provider", "gitlab", "--project", project,
              "--pipeline", str(pipeline["id"]), "--sha", pipeline["sha"], "--anonymous",
-             "--out-dir", f"copies-gitlab/{ref}", "--title", f"copies gitlab {ref}"]  # fmt: skip
+             "--out-dir", f"copies-gitlab/{ref}", "--title", f"copies gitlab {ref}",
+             "--scenario-delay", "60"]  # fmt: skip
         )
         failed |= rc != 0
     return 1 if failed else 0

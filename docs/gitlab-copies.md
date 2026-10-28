@@ -73,3 +73,18 @@ Usage is small: 4 short Semgrep jobs per week. Put nothing secret in either proj
    secret: the project is public). Then *Actions > copies-contract > Run workflow*. Until the
    variable exists, every run shows a `copies gitlab` warning and `verify-gitlab` is skipped, so
    scanproof#44 cannot be closed by a skipped job.
+
+## Anonymous rate limits
+
+The copies workflow serializes runs and waits 60 seconds between scenario verifications,
+including the boundary between branches. Each scenario still invokes the real CLI and
+checks its fresh report, provenance, exit code, exact codes and evaluated jobs. There is no
+retry of a mismatched policy result into success. Shared anonymous GitLab quotas can still
+be exhausted; pacing is mitigation, not validated evidence that the contract will pass.
+
+Run [40657524861](https://github.com/abdelrahman-eladwy/scanproof-e2e/actions/runs/40657524861)
+passed all five `main` scenarios and the first `inaccessible` scenario. Its saved report
+`inaccessible-not-required.json` records `RATE_LIMITED` for **both** public children and the
+private child. With no public jobs visible, `JOB_MAYBE_IN_UNREADABLE_PIPELINE` correctly
+failed closed. The final scenario failed on root HTTP 429. This is separate from core #69's
+unrelated-subtree precision defect. Keep #8 and core #44 open until all eight scenarios pass.

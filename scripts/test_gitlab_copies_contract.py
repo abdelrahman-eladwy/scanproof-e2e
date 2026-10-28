@@ -45,12 +45,16 @@ class Contract(unittest.TestCase):
         with (
             mock.patch.object(gcc, "get_json", fake_get),
             mock.patch.object(gcc.verify_contract, "main", fake_verify),
+            mock.patch.object(gcc.time, "sleep") as sleep,
             mock.patch.dict(os.environ, env, clear=False),
             contextlib.redirect_stdout(io.StringIO()),
         ):
             if not env.get("GITLAB_COPIES_PROJECT"):
                 os.environ.pop("GITLAB_COPIES_PROJECT", None)
-            return gcc.main(), calls
+            rc = gcc.main()
+            if calls:
+                sleep.assert_called_once_with(60)
+            return rc, calls
 
     def test_both_branches_verified_with_their_own_pipeline_and_commit(self) -> None:
         rc, calls = self.run_with({"main": pipeline(1, sha="a" * 40), "inaccessible": pipeline(2, sha="b" * 40)})
@@ -61,6 +65,7 @@ class Contract(unittest.TestCase):
         self.assertEqual(main[main.index("--pipeline") + 1], "1")
         self.assertEqual(main[main.index("--sha") + 1], "a" * 40)
         self.assertIn("--anonymous", main)
+        self.assertEqual(main[main.index("--scenario-delay") + 1], "60")
         other = by_file[gcc.SCENARIOS["inaccessible"]]
         self.assertEqual(other[other.index("--pipeline") + 1], "2")
 
