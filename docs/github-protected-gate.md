@@ -33,6 +33,8 @@ The token is optional for a public repository; private repositories need a read-
 
 The self-test job runs on PRs/changes to this preflight and must stay green. Only explicit manual dispatch runs the **audit** job. An audit job failing before an environment is protected is expected; do **not** make it a required merge status check. Avoid dispatching workflows with privileged audit tokens on untrusted branches.
 
+See also [negative PR observation protocol](github-protected-trial-evidence.md) for a read-only collector that inspects four real staging PRs. It cannot replace actual blocked merge/deploy trials.
+
 ## Required staging/admin actions before protected-gate GO
 
 1. Have an administrator configure a sacrificial GitHub repo and a distinct security CODEOWNER/reviewer who can approve protected policy and workflow changes. Require at least one review; use stale review dismissal or last-push approval. Avoid setting a sole author as the only reviewer and locking out legitimate changes.

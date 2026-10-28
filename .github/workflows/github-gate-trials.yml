@@ -1,0 +1,78 @@
+# Read-only evidence collection from four sacrificial protected GitHub PRs.
+# NO MERGE, NO DEPLOY, NO SETTINGS MUTATION. Do not dispatch from untrusted branches.
+# A passing observational result DOES NOT qualify the release gate by itself.
+name: github-gate-trials
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: "Sacrificial GitHub owner/repo (public to the workflow token)"
+        required: true
+        type: string
+      branch:
+        description: "Branch with independently required ScanProof check"
+        default: "main"
+        required: true
+        type: string
+      status_check:
+        description: "Exact ScanProof verification check-run name"
+        default: "ScanProof verification"
+        required: true
+        type: string
+      trusted_app_id:
+        description: "Required check-run source integration ID"
+        default: "15368"
+        required: true
+        type: string
+      positive_pr:
+        description: "PR with valid scan and successful gate"
+        required: true
+        type: string
+      missing_pr:
+        description: "PR with removed or absent gate check"
+        required: true
+        type: string
+      failed_pr:
+        description: "PR with failed ScanProof check"
+        required: true
+        type: string
+      skipped_pr:
+        description: "PR with skipped ScanProof check"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_REPO: ${{ inputs.repository }}
+      TARGET_BRANCH: ${{ inputs.branch }}
+      GATE_CONTEXT: ${{ inputs.status_check }}
+      APP_ID: ${{ inputs.trusted_app_id }}
+      GOOD_PR: ${{ inputs.positive_pr }}
+      MISSING_PR: ${{ inputs.missing_pr }}
+      FAILED_PR: ${{ inputs.failed_pr }}
+      SKIPPED_PR: ${{ inputs.skipped_pr }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read-only observation of actual negative PR check/mergeability state
+        run: >-
+          python scripts/audit_github_gate_trials.py
+          --repo "$TARGET_REPO" --branch "$TARGET_BRANCH"
+          --check "$GATE_CONTEXT" --app-id "$APP_ID"
+          --positive-pr "$GOOD_PR" --missing-pr "$MISSING_PR"
+          --failed-pr "$FAILED_PR" --skipped-pr "$SKIPPED_PR"
+          --output evidence/github-gate-trials.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: github-gate-trials-observations
+          path: evidence/github-gate-trials.json
+          if-no-files-found: warn
