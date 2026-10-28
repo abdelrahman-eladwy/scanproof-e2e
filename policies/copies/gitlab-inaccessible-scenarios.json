@@ -10,8 +10,13 @@
       "svc-a > copy-sast",
       "svc-b > copy-sast"
     ],
-    "unreadable_ok": true,
-    "warning": "could not be read"
+    "warning": "could not be read",
+    "unreadable": {
+      "svc-private": [
+        "AUTH",
+        "NOT_FOUND"
+      ]
+    }
   },
   {
     "policy": "policies/copies/gitlab/inaccessible-not-required.yaml",
@@ -22,8 +27,13 @@
       "svc-a > copy-sast",
       "svc-b > copy-sast"
     ],
-    "unreadable_ok": true,
-    "warning": "could not be read"
+    "warning": "could not be read",
+    "unreadable": {
+      "svc-private": [
+        "AUTH",
+        "NOT_FOUND"
+      ]
+    }
   },
   {
     "policy": "policies/copies/gitlab/inaccessible-production.yaml",
@@ -36,6 +46,11 @@
       "svc-a > copy-sast",
       "svc-b > copy-sast"
     ],
-    "unreadable_ok": true
+    "unreadable": {
+      "svc-private": [
+        "AUTH",
+        "NOT_FOUND"
+      ]
+    }
   }
 ]
