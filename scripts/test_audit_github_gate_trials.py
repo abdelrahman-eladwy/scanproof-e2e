@@ -111,6 +111,8 @@ class TrialContract(unittest.TestCase):
         for mutation in (
             {"head_sha": "b" * 40},
             {"status": "in_progress"},
+            {"conclusion": None},
+            {"conclusion": "unrecognized"},
         ):
             with self.subTest(mutation=mutation):
                 checks = make_checks("success")
