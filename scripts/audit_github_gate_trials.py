@@ -82,6 +82,11 @@ def observe_pr(repo: str, branch: str, case: str, number: int, check: str, app_i
             raise ValueError("Gate check belongs to an unexpected head commit")
         if found.get("status") != "completed":
             raise ValueError("Gate check is not completed")
+        if found.get("conclusion") not in (
+            "success", "failure", "skipped", "cancelled", "timed_out", "neutral",
+            "action_required", "stale",
+        ):
+            raise ValueError("Completed gate check has unrecognized conclusion")
     conclusion = found.get("conclusion") if found else None
     merge_state = pr.get("mergeable_state")
     if merge_state not in ("clean", "blocked", "dirty", "behind", "unstable", "draft", "unknown"):
