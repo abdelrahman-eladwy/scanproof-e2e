@@ -8,12 +8,18 @@ on:
     paths:
       - "scripts/audit_github_gate.py"
       - "scripts/test_audit_github_gate.py"
+      - "scripts/audit_github_gate_trials.py"
+      - "scripts/test_audit_github_gate_trials.py"
+      - ".github/workflows/github-gate-trials.yml"
       - ".github/workflows/github-protection-preflight.yml"
   push:
     branches: [main]
     paths:
       - "scripts/audit_github_gate.py"
       - "scripts/test_audit_github_gate.py"
+      - "scripts/audit_github_gate_trials.py"
+      - "scripts/test_audit_github_gate_trials.py"
+      - ".github/workflows/github-gate-trials.yml"
       - ".github/workflows/github-protection-preflight.yml"
   workflow_dispatch:
     inputs:
@@ -51,7 +57,10 @@ jobs:
         with:
           python-version: "3.12"
       - name: Offline ruleset and token-safety regressions
-        run: python -m unittest -q scripts/test_audit_github_gate.py
+        run: >-
+          python -m unittest -q
+          scripts/test_audit_github_gate.py
+          scripts/test_audit_github_gate_trials.py
 
   audit:
     if: ${{ github.event_name == 'workflow_dispatch' }}
