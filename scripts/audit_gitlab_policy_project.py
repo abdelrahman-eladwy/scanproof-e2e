@@ -92,6 +92,8 @@ def _group_only(entries: object, group_id: int, permission: str) -> list[str]:
 def evaluate(project: str, branch: str, group_id: int, meta: dict, rule: dict) -> dict:
     if meta.get("path_with_namespace") != project or type(meta.get("id")) is not int:
         raise ValueError("Project path/ID could not be confirmed")
+    if meta.get("default_branch") != branch:
+        raise ValueError("Protected policy branch is not the project's confirmed default branch")
     if rule.get("name") != branch:
         raise ValueError("Protected branch rule did not match requested branch")
     problems: list[str] = []

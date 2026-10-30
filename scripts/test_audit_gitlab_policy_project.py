@@ -20,7 +20,7 @@ GROUP = 1729
 
 
 def meta():
-    return {"id": 92, "path_with_namespace": PROJECT}
+    return {"id": 92, "path_with_namespace": PROJECT, "default_branch": "main"}
 
 
 def rule():
@@ -41,6 +41,20 @@ class GitLabPolicyAuditTests(unittest.TestCase):
         result = audit.evaluate(PROJECT, "main", GROUP, meta(), rule())
         self.assertEqual(result["result"], "PASS_STATIC_POLICY_BRANCH")
         self.assertIn("does not prove linked", result["limits"])
+
+    def test_protected_nondefault_branch_cannot_pass_policy_audit(self):
+        for default in ("unprotected", None, "", 42):
+            with self.subTest(default=default):
+                project = meta()
+                project["default_branch"] = default
+                with self.assertRaisesRegex(ValueError, "default branch"):
+                    audit.evaluate(PROJECT, "main", GROUP, project, rule())
+
+    def test_missing_default_branch_is_not_assumed_safe(self):
+        project = meta()
+        del project["default_branch"]
+        with self.assertRaisesRegex(ValueError, "default branch"):
+            audit.evaluate(PROJECT, "main", GROUP, project, rule())
 
     def test_all_roles_must_be_pinned_to_independent_group(self):
         for key in ("push_access_levels", "merge_access_levels", "unprotect_access_levels"):
