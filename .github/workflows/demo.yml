@@ -112,8 +112,10 @@ jobs:
         run: |
           RELEASE_IMAGE_DIGEST="${RELEASE_IMAGE#*@}"; export RELEASE_IMAGE_DIGEST
           set +e
+          # GitHub's job API inside a run lagged completion by >45s under load
+          # (run 41111755411); give the bounded re-read (scanproof#118) room.
           scanproof verify -P "$POLICY" --pipeline "$GITHUB_RUN_ID" -p "$GITHUB_REPOSITORY" \
-            -o report.json 2> console.txt
+            --settle-seconds 120 -o report.json 2> console.txt
           rc=$?
           set -e
           cat console.txt
