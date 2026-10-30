@@ -176,6 +176,88 @@ class EnvironmentContract(unittest.TestCase):
                     with self.assertRaises(urllib.error.HTTPError):
                         audit.collect(REPO, "main", "staging", "t")
 
+    def selected(self) -> dict:
+        env = protected()
+        env["deployment_branch_policy"] = {
+            "protected_branches": False,
+            "custom_branch_policies": True,
+        }
+        return env
+
+    def test_exact_single_main_branch_policy_passes(self):
+        # #37: gate-lab staging = Selected branches -> one literal `main` rule.
+        rules = [{"id": 1, "name": "main", "type": "branch"}]
+        result = audit.evaluate(
+            REPO, "main", "staging", self.selected(),
+            classic_protection=None, branch_policies=rules,
+        )
+        self.assertEqual(result["result"], "PASS_STATIC_ENVIRONMENT")
+        self.assertTrue(result["exact_branch_policy_only"])
+
+    def test_any_broader_or_ambiguous_custom_policy_fails(self):
+        cases = {
+            "unread": None,
+            "empty": [],
+            "wildcard": [{"name": "*", "type": "branch"}],
+            "glob": [{"name": "ma*n", "type": "branch"}],
+            "other branch": [{"name": "release", "type": "branch"}],
+            "tag named main": [{"name": "main", "type": "tag"}],
+            "missing type": [{"name": "main"}],
+            "two rules": [
+                {"name": "main", "type": "branch"},
+                {"name": "lab/env-probe", "type": "branch"},
+            ],
+            "non-str name": [{"name": ["main"], "type": "branch"}],
+            "case": [{"name": "Main", "type": "branch"}],
+            "not a dict": ["main"],
+        }
+        for label, rules in cases.items():
+            with self.subTest(label):
+                result = audit.evaluate(
+                    REPO, "main", "staging", self.selected(),
+                    classic_protection=None, branch_policies=rules,
+                )
+                self.assertEqual(result["result"], "FAIL_STATIC_ENVIRONMENT")
+                self.assertFalse(result["exact_branch_policy_only"])
+
+    def test_custom_policy_collect_reads_rules_not_classic_protection(self):
+        listing = {"total_count": 1, "branch_policies": [{"name": "main", "type": "branch"}]}
+        with mock.patch.object(
+            audit, "_fetch_json", side_effect=[self.selected(), listing]
+        ) as fetch:
+            result = audit.collect(REPO, "main", "staging", "t")
+        self.assertEqual(result["result"], "PASS_STATIC_ENVIRONMENT")
+        urls = [c.args[0] for c in fetch.call_args_list]
+        self.assertEqual(
+            urls[1],
+            "https://api.github.com/repos/acme/sacrificial/environments/staging"
+            "/deployment-branch-policies?per_page=100",
+        )
+        self.assertFalse(any("/protection" in u for u in urls))
+
+    def test_incomplete_or_malformed_rule_listing_is_indeterminate(self):
+        for listing in (
+            {"total_count": 2, "branch_policies": [{"name": "main", "type": "branch"}]},
+            {"branch_policies": [{"name": "main", "type": "branch"}]},
+            {"total_count": 1},
+            [],
+            {"total_count": True, "branch_policies": [{"name": "main", "type": "branch"}]},
+        ):
+            with self.subTest(listing=listing):
+                with mock.patch.object(
+                    audit, "_fetch_json", side_effect=[self.selected(), listing]
+                ):
+                    with self.assertRaises(ValueError):
+                        audit.collect(REPO, "main", "staging", "t")
+
+    def test_unreadable_rule_listing_is_indeterminate(self):
+        with mock.patch.object(
+            audit, "_fetch_json",
+            side_effect=[self.selected(), http_error(403, b'{"message": "Forbidden"}')],
+        ):
+            with self.assertRaises(urllib.error.HTTPError):
+                audit.collect(REPO, "main", "staging", "t")
+
     def test_malformed_protection_payload_is_indeterminate(self):
         for bad in ([], {}, {"url": 1}):
             with self.subTest(bad=bad):
