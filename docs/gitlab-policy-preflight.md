@@ -30,7 +30,7 @@ Replace 1729 with the **real** security group ID. Never paste a real token in a 
 
 The script makes two GETs (project metadata and exact protected branch) using a specified HTTPS origin, never follows redirects, uses 20-second timeouts, refuses payloads above 1 MiB, and records no response bodies, usernames or access tokens in the evidence output. It cannot change settings.
 
-It verifies that the project and branch match the requested exact names; the branch prohibits force push and requires CODEOWNER approval; and **each** reported push, merge and unprotect actor is identified as the expected security group, with no generic role, other group, individual, or deploy key allowance. This is intentionally stricter than GitLab permits: a securely governed policy using another configuration may be flagged for manual review.
+It verifies that the project and branch match the requested exact names **and the protected branch is the project's actual default branch**; the branch prohibits force push and requires CODEOWNER approval; and **each** reported push, merge and unprotect actor is identified as the expected security group, with no generic role, other group, individual, or deploy key allowance. This is intentionally stricter than GitLab permits: a securely governed policy using another configuration may be flagged for manual review.
 
 | Result | Meaning |
 |---|---|
