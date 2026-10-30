@@ -94,6 +94,31 @@ class TrialContract(unittest.TestCase):
         result, _ = observe("failed", outcome="failure", merged=True)
         self.assertEqual(result["observation"], "POTENTIAL_BYPASS")
 
+    def test_any_merged_negative_case_is_a_potential_bypass(self):
+        for case, outcome in (("missing", "success"), ("failed", None),
+                              ("skipped", "failure")):
+            with self.subTest(case=case):
+                result, _ = observe(case, outcome=outcome, merged=True)
+                self.assertEqual(result["observation"], "POTENTIAL_BYPASS")
+
+    def test_closed_unmerged_negative_case_is_not_considered_blocked(self):
+        pr = make_pr(17)
+        pr["state"] = "closed"
+        with mock.patch.object(audit, "fetch_json", side_effect=[pr, make_checks(None)]):
+            result = audit.observe_pr(REPO, "main", "missing", 17, CHECK, APP, None)
+        self.assertEqual(result["observation"], "INDETERMINATE")
+
+    def test_positive_case_must_be_open_and_unmerged(self):
+        for merged in (False, True):
+            pr = make_pr(17, merge_state="clean", mergeable=True, merged=merged)
+            pr["state"] = "closed"
+            with self.subTest(merged=merged):
+                with mock.patch.object(
+                    audit, "fetch_json", side_effect=[pr, make_checks("success")]
+                ):
+                    result = audit.observe_pr(REPO, "main", "positive", 17, CHECK, APP, None)
+                self.assertEqual(result["observation"], "INDETERMINATE")
+
     def test_missing_required_check_with_another_context_is_still_absent(self):
         result, _ = observe("missing", checks=make_checks("success", context="test (3.12)"))
         self.assertEqual(result["gate_conclusion"], "ABSENT")
