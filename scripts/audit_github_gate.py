@@ -53,20 +53,29 @@ def _branch_covered(ruleset: dict, branch: str, default_branch: str) -> bool:
 
 def _evaluate_one(detail: dict, check: str, app_id: int) -> list[str]:
     problems: list[str] = []
-    rules = {r.get("type"): r for r in detail.get("rules", []) if isinstance(r, dict)}
+    entries = detail.get("rules", [])
+    if not isinstance(entries, list) or not all(isinstance(r, dict) for r in entries):
+        return ["ruleset rules are missing or malformed"]
+    kinds = [r.get("type") for r in entries]
+    if len(kinds) != len(set(kinds)):
+        problems.append("ambiguous duplicate ruleset rule types")
+    rules = {r.get("type"): r for r in entries}
     status = rules.get("required_status_checks", {}).get("parameters", {})
     checks = status.get("required_status_checks", [])
     if status.get("strict_required_status_checks_policy") is not True:
         problems.append("strict_required_status_checks_policy is not true")
-    if not isinstance(checks, list) or not any(
-        isinstance(c, dict)
-        and c.get("context") == check
-        and c.get("integration_id") == app_id
-        for c in checks
+    matching = (
+        [c for c in checks if isinstance(c, dict) and c.get("context") == check]
+        if isinstance(checks, list) else []
+    )
+    if len(matching) != 1 or type(matching[0].get("integration_id")) is not int or (
+        matching[0]["integration_id"] != app_id
     ):
-        problems.append(f"trusted required status check {check!r} (app {app_id}) is missing")
+        problems.append(
+            f"trusted required status check {check!r} (app {app_id}) is missing or ambiguous"
+        )
     pull = rules.get("pull_request", {}).get("parameters", {})
-    if not isinstance(pull.get("required_approving_review_count"), int) or (
+    if type(pull.get("required_approving_review_count")) is not int or (
         pull["required_approving_review_count"] < 1
     ):
         problems.append("at least one independent approving review is not required")
