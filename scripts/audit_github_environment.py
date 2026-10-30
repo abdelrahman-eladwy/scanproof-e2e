@@ -25,7 +25,13 @@ LIMITS = (
 
 
 def evaluate(
-    repo: str, branch: str, name: str, data: dict, *, classic_protection: bool | None
+    repo: str,
+    branch: str,
+    name: str,
+    data: dict,
+    *,
+    classic_protection: bool | None,
+    branch_policies: list | None = None,
 ) -> dict:
     """Fail closed on missing, weak or unrecognizable environment controls.
 
@@ -60,13 +66,22 @@ def evaluate(
             problems.append("independently accountable required reviewers are missing or invalid")
 
     branch_policy = data.get("deployment_branch_policy")
+    exact_branch_only = False
     if not isinstance(branch_policy, dict):
         problems.append("deployment branch restriction is missing")
+    elif (
+        branch_policy.get("protected_branches") is False
+        and branch_policy.get("custom_branch_policies") is True
+    ):
+        exact_branch_only = _only_exact_branch(branch_policies, branch)
+        if not exact_branch_only:
+            problems.append(
+                "selected-branches deployment policy is not exactly one literal rule for "
+                "the audited branch (or could not be read)"
+            )
     elif branch_policy.get("protected_branches") is not True or (
         branch_policy.get("custom_branch_policies") is not False
     ):
-        # A custom-policy environment can also be secure, but cannot be established
-        # without separately inspecting its policy patterns and active branch rules.
         problems.append("deployment is not restricted to branches with branch protection")
     elif classic_protection is not True:
         problems.append(
@@ -95,8 +110,41 @@ def evaluate(
         and branch_policy.get("protected_branches") is True
         and branch_policy.get("custom_branch_policies") is False,
         "classic_branch_protection": classic_protection,
+        "exact_branch_policy_only": exact_branch_only,
         "limits": LIMITS,
     }
+
+
+_WILDCARD = re.compile(r"[*?\[\]{}!]")
+
+
+def _only_exact_branch(policies: list | None, branch: str) -> bool:
+    """True only for exactly one literal ``type: branch`` rule naming ``branch``."""
+    if not isinstance(policies, list) or len(policies) != 1:
+        return False
+    rule = policies[0]
+    return (
+        isinstance(rule, dict)
+        and rule.get("type") == "branch"
+        and isinstance(rule.get("name"), str)
+        and rule["name"] == branch
+        and not _WILDCARD.search(rule["name"])
+    )
+
+
+def deployment_branch_policies(repo: str, name: str, token: str | None) -> list:
+    """Read every custom deployment branch/tag rule; raise if incomplete or malformed."""
+    url = (
+        f"{API}/repos/{repo}/environments/{quote(name, safe='')}"
+        "/deployment-branch-policies?per_page=100"
+    )
+    data = _fetch_json(url, token)
+    if not isinstance(data, dict) or not isinstance(data.get("branch_policies"), list):
+        raise ValueError("Deployment branch policy list is malformed")
+    policies = data["branch_policies"]
+    if type(data.get("total_count")) is not int or data["total_count"] != len(policies):
+        raise ValueError("Deployment branch policy list is incomplete; review pagination")
+    return policies
 
 
 def classic_branch_protection(repo: str, branch: str, token: str | None) -> bool:
@@ -126,6 +174,12 @@ def collect(repo: str, branch: str, name: str, token: str | None) -> dict:
     # quote(..., safe="") prevents slashes or spaces in environment names from
     # being interpreted as new URL path segments. Only fixed GitHub endpoints.
     data = _fetch_json(f"{API}/repos/{repo}/environments/{quote(name, safe='')}", token)
+    policy = data.get("deployment_branch_policy") if isinstance(data, dict) else None
+    if isinstance(policy, dict) and policy.get("custom_branch_policies") is True:
+        # Selected branches: the explicit rule list is the restriction; classic
+        # branch protection is irrelevant to it and is not requested.
+        rules = deployment_branch_policies(repo, name, token)
+        return evaluate(repo, branch, name, data, classic_protection=None, branch_policies=rules)
     classic = classic_branch_protection(repo, branch, token)
     return evaluate(repo, branch, name, data, classic_protection=classic)
 
