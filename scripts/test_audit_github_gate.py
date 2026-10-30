@@ -96,6 +96,46 @@ class RulesetContract(unittest.TestCase):
                 status["required_status_checks"][0][mismatch] = "ci" if mismatch == "context" else 42
                 self.assertEqual(evaluate([rule])["result"], "FAIL_STATIC_PREFLIGHT")
 
+    def test_duplicate_exact_check_context_with_different_app_cannot_pass(self):
+        rule = protected_ruleset()
+        status = next(
+            x["parameters"] for x in rule["rules"]
+            if x["type"] == "required_status_checks"
+        )
+        status["required_status_checks"].append(
+            {"context": "ScanProof verification", "integration_id": 42}
+        )
+        result = evaluate([rule])
+        self.assertEqual(result["result"], "FAIL_STATIC_PREFLIGHT")
+        self.assertTrue(any(
+            "ambiguous" in p for p in result["inspected_rulesets"][0]["problems"]
+        ))
+
+    def test_duplicate_check_even_with_same_app_is_not_unique(self):
+        rule = protected_ruleset()
+        status = next(
+            x["parameters"] for x in rule["rules"]
+            if x["type"] == "required_status_checks"
+        )
+        status["required_status_checks"].append(
+            {"context": "ScanProof verification", "integration_id": 15368}
+        )
+        self.assertEqual(evaluate([rule])["result"], "FAIL_STATIC_PREFLIGHT")
+
+    def test_boolean_review_count_and_duplicate_rule_types_fail_closed(self):
+        rule = protected_ruleset()
+        pull = next(x["parameters"] for x in rule["rules"] if x["type"] == "pull_request")
+        pull["required_approving_review_count"] = True
+        self.assertEqual(evaluate([rule])["result"], "FAIL_STATIC_PREFLIGHT")
+        pull["required_approving_review_count"] = 1
+        rule["rules"].append({"type": "required_status_checks", "parameters": {
+            "strict_required_status_checks_policy": True,
+            "required_status_checks": [
+                {"context": "ScanProof verification", "integration_id": 15368}
+            ],
+        }})
+        self.assertEqual(evaluate([rule])["result"], "FAIL_STATIC_PREFLIGHT")
+
     def test_non_strict_checks_and_bypass_actor_both_fail(self):
         rule = protected_ruleset()
         status = next(
