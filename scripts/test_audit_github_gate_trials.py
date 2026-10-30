@@ -101,6 +101,32 @@ class TrialContract(unittest.TestCase):
                 result, _ = observe(case, outcome=outcome, merged=True)
                 self.assertEqual(result["observation"], "POTENTIAL_BYPASS")
 
+    def test_merged_negative_precedes_invalid_or_unavailable_check_inventory(self):
+        for case in ("missing", "failed", "skipped"):
+            with self.subTest(case=case):
+                pr = make_pr(17, merged=True)
+                with mock.patch.object(
+                    audit, "fetch_json", side_effect=[
+                        pr, urllib.error.HTTPError(
+                            "https://api.github.com", 403, "Denied", {}, None
+                        ),
+                    ]
+                ) as fetch:
+                    result = audit.observe_pr(
+                        REPO, "main", case, 17, CHECK, APP, None
+                    )
+                self.assertEqual(fetch.call_count, 1)
+                self.assertEqual(result["observation"], "POTENTIAL_BYPASS")
+                self.assertEqual(result["gate_conclusion"], "UNVERIFIED")
+                self.assertIsNone(result["gate_app_id"])
+
+    def test_merged_negative_wrong_source_cannot_hide_merge_warning(self):
+        result, _ = observe(
+            "failed", merged=True, checks=make_checks("failure", app=22)
+        )
+        self.assertEqual(result["observation"], "POTENTIAL_BYPASS")
+        self.assertEqual(result["gate_conclusion"], "UNVERIFIED")
+
     def test_closed_unmerged_negative_case_is_not_considered_blocked(self):
         pr = make_pr(17)
         pr["state"] = "closed"
