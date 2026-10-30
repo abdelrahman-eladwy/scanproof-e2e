@@ -24,8 +24,16 @@ LIMITS = (
 )
 
 
-def evaluate(repo: str, branch: str, name: str, data: dict) -> dict:
-    """Fail closed on missing, weak or unrecognizable environment controls."""
+def evaluate(
+    repo: str, branch: str, name: str, data: dict, *, classic_protection: bool | None
+) -> dict:
+    """Fail closed on missing, weak or unrecognizable environment controls.
+
+    ``classic_protection`` must be exactly True for a "protected branches only"
+    policy to count. GitHub documents that policy in terms of branch protection
+    rules (all branches may deploy when none exist); rulesets are not documented
+    to qualify, so a ruleset-only branch is not accepted as a restriction.
+    """
     if not isinstance(data, dict) or data.get("name") != name:
         raise ValueError("GitHub environment metadata does not match the requested environment")
 
@@ -60,6 +68,12 @@ def evaluate(repo: str, branch: str, name: str, data: dict) -> dict:
         # A custom-policy environment can also be secure, but cannot be established
         # without separately inspecting its policy patterns and active branch rules.
         problems.append("deployment is not restricted to branches with branch protection")
+    elif classic_protection is not True:
+        problems.append(
+            "protected-branches deployment policy relies on classic branch protection, "
+            "which is absent or unverified on the audited branch; rulesets alone are not "
+            "documented to restrict environment deployments"
+        )
 
     # Omission is unknown. A false PASS is worse than a conservative blocker.
     if data.get("can_admins_bypass") is not False:
@@ -80,15 +94,40 @@ def evaluate(repo: str, branch: str, name: str, data: dict) -> dict:
         "protected_branches_only": isinstance(branch_policy, dict)
         and branch_policy.get("protected_branches") is True
         and branch_policy.get("custom_branch_policies") is False,
+        "classic_branch_protection": classic_protection,
         "limits": LIMITS,
     }
+
+
+def classic_branch_protection(repo: str, branch: str, token: str | None) -> bool:
+    """Return True/False only on an unambiguous answer; raise otherwise.
+
+    Requires Administration read. A 403, or any 404 other than GitHub's explicit
+    "Branch not protected", is unknown and propagates as INDETERMINATE.
+    """
+    url = f"{API}/repos/{repo}/branches/{quote(branch, safe='/')}/protection"
+    try:
+        data = _fetch_json(url, token)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            try:
+                body = json.loads(exc.read(4096) or b"{}")
+            except (ValueError, OSError):
+                body = {}
+            if isinstance(body, dict) and body.get("message") == "Branch not protected":
+                return False
+        raise
+    if not isinstance(data, dict) or not isinstance(data.get("url"), str):
+        raise ValueError("Branch protection response is malformed")
+    return True
 
 
 def collect(repo: str, branch: str, name: str, token: str | None) -> dict:
     # quote(..., safe="") prevents slashes or spaces in environment names from
     # being interpreted as new URL path segments. Only fixed GitHub endpoints.
     data = _fetch_json(f"{API}/repos/{repo}/environments/{quote(name, safe='')}", token)
-    return evaluate(repo, branch, name, data)
+    classic = classic_branch_protection(repo, branch, token)
+    return evaluate(repo, branch, name, data, classic_protection=classic)
 
 
 def main(argv: list[str] | None = None) -> int:

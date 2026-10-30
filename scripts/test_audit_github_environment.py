@@ -42,8 +42,18 @@ def protected() -> dict:
     }
 
 
-def check(data: dict) -> dict:
-    return audit.evaluate(REPO, "main", "staging", data)
+def check(data: dict, classic: bool | None = True) -> dict:
+    return audit.evaluate(REPO, "main", "staging", data, classic_protection=classic)
+
+
+def http_error(code: int, body: bytes) -> urllib.error.HTTPError:
+    return urllib.error.HTTPError(
+        "https://api.github.com/repos/acme/sacrificial/branches/main/protection",
+        code, "err", {}, io.BytesIO(body),
+    )
+
+
+PROTECTION = {"url": "https://api.github.com/repos/acme/sacrificial/branches/main/protection"}
 
 
 class EnvironmentContract(unittest.TestCase):
@@ -118,13 +128,60 @@ class EnvironmentContract(unittest.TestCase):
     def test_fetch_is_read_only_and_escapes_environment_name(self):
         env = protected()
         env["name"] = "staging/review"
-        with mock.patch.object(audit, "_fetch_json", return_value=env) as fetch:
+        with mock.patch.object(audit, "_fetch_json", side_effect=[env, PROTECTION]) as fetch:
             result = audit.collect(REPO, "main", "staging/review", "read-only")
         self.assertEqual(result["result"], "PASS_STATIC_ENVIRONMENT")
-        fetch.assert_called_once_with(
-            "https://api.github.com/repos/acme/sacrificial/environments/staging%2Freview",
-            "read-only",
+        self.assertEqual(
+            [c.args for c in fetch.call_args_list],
+            [
+                ("https://api.github.com/repos/acme/sacrificial/environments/staging%2Freview",
+                 "read-only"),
+                ("https://api.github.com/repos/acme/sacrificial/branches/main/protection",
+                 "read-only"),
+            ],
         )
+
+    def test_ruleset_only_branch_never_satisfies_protected_branches_policy(self):
+        # Regression for #35: gate-lab main had a ruleset but no classic rule.
+        for classic in (False, None):
+            with self.subTest(classic=classic):
+                result = check(protected(), classic)
+                self.assertEqual(result["result"], "FAIL_STATIC_ENVIRONMENT")
+                self.assertTrue(any("classic branch protection" in p for p in result["problems"]))
+                self.assertIsNot(result["classic_branch_protection"], True)
+
+    def test_classic_protection_is_a_required_explicit_input(self):
+        with self.assertRaises(TypeError):
+            audit.evaluate(REPO, "main", "staging", protected())  # type: ignore[call-arg]
+
+    def test_explicit_not_protected_404_is_absent(self):
+        env = protected()
+        with mock.patch.object(
+            audit, "_fetch_json",
+            side_effect=[env, http_error(404, b'{"message": "Branch not protected"}')],
+        ):
+            result = audit.collect(REPO, "main", "staging", "t")
+        self.assertEqual(result["result"], "FAIL_STATIC_ENVIRONMENT")
+        self.assertIs(result["classic_branch_protection"], False)
+
+    def test_unauthorized_or_ambiguous_protection_read_is_unknown_not_absent(self):
+        for err in (
+            http_error(403, b'{"message": "Resource not accessible by integration"}'),
+            http_error(404, b'{"message": "Not Found"}'),
+            http_error(404, b"not-json"),
+            http_error(500, b""),
+        ):
+            with self.subTest(code=err.code):
+                with mock.patch.object(audit, "_fetch_json", side_effect=[protected(), err]):
+                    with self.assertRaises(urllib.error.HTTPError):
+                        audit.collect(REPO, "main", "staging", "t")
+
+    def test_malformed_protection_payload_is_indeterminate(self):
+        for bad in ([], {}, {"url": 1}):
+            with self.subTest(bad=bad):
+                with mock.patch.object(audit, "_fetch_json", side_effect=[protected(), bad]):
+                    with self.assertRaises(ValueError):
+                        audit.collect(REPO, "main", "staging", "t")
 
     def test_unauthorized_read_is_indeterminate_and_token_not_printed(self):
         with tempfile.TemporaryDirectory() as temp:
