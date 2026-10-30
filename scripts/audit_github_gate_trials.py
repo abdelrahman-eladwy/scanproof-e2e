@@ -62,6 +62,28 @@ def observe_pr(repo: str, branch: str, case: str, number: int, check: str, app_i
         or pr.get("number") != number
     ):
         raise ValueError("PR branch/number/head metadata does not match requested target")
+    if case != "positive" and pr.get("merged_at") is not None:
+        # An already-merged negative trial is an urgent potential bypass even if
+        # its check-run inventory is unavailable, malformed, or forged. Do not
+        # suggest that the gate's provenance was verified in this early warning.
+        return {
+            "case": case,
+            "pr": number,
+            "pr_url": f"https://github.com/{repo}/pull/{number}",
+            "target_branch": branch,
+            "head_sha": sha,
+            "gate_context": check,
+            "gate_app_id": None,
+            "gate_conclusion": "UNVERIFIED",
+            "mergeable_state": pr.get("mergeable_state"),
+            "mergeable": pr.get("mergeable"),
+            "merged": True,
+            "observation": "POTENTIAL_BYPASS",
+            "caveat": (
+                "A negative trial merged; check inventory and source are unverified. "
+                "Investigate actual branch protection and deployment evidence."
+            ),
+        }
     checks = fetch_json(
         f"{API}/repos/{repo}/commits/{sha}/check-runs?per_page=100", token
     )
