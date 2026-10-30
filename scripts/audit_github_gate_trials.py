@@ -102,10 +102,18 @@ def observe_pr(repo: str, branch: str, case: str, number: int, check: str, app_i
     }[case]
     result = "INDETERMINATE"
     if case == "positive":
-        if conclusion == "success" and merge_state == "clean" and pr.get("mergeable") is True:
+        if (
+            conclusion == "success"
+            and pr.get("state") == "open"
+            and not merged
+            and merge_state == "clean"
+            and pr.get("mergeable") is True
+        ):
             result = "OBSERVED_ELIGIBLE"
     elif merged:
-        result = "POTENTIAL_BYPASS" if conclusion == expected else "INDETERMINATE"
+        # An already merged negative trial requires investigation even when its check
+        # conclusion differs from the expected scenario or the check is absent.
+        result = "POTENTIAL_BYPASS"
     elif conclusion == expected and pr.get("state") == "open":
         if merge_state == "blocked":
             result = "OBSERVED_BLOCKED"
